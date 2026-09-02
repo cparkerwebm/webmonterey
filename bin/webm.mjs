@@ -39,6 +39,10 @@ const COMMANDS = {
     blurb: 'Check this site against the traps that fail silently',
     load: () => import('../src/cli/doctor.ts'),
   },
+  audit: {
+    blurb: 'Check a BUILD: image alt text, broken links, the sitemap. For launch.',
+    load: () => import('../src/cli/audit.ts'),
+  },
   upgrade: {
     blurb: 'Move this site to a newer framework version',
     load: () => import('../src/cli/upgrade.ts'),

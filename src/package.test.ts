@@ -86,6 +86,19 @@ test('every directory the code reads out of the package is published', () => {
   }
 });
 
+test('the webmaster share image is the size the page declares for it', async () => {
+  /*
+   * The page hardcodes 1200x630 in og:image:width/height because measuring inside a page's
+   * frontmatter would need node:fs in an Astro module. A crawler lays the card out from those
+   * numbers before it fetches the image, so they have to be true - this is where that is held.
+   */
+  const { imageSize } = await import('./integration/image-size.ts');
+  assert.deepEqual(imageSize(join(ROOT, 'src/assets/webmaster-og.png')), {
+    width: 1200,
+    height: 630,
+  });
+});
+
 test('the package does not depend on itself', () => {
   /*
    * IT DID, AND IT SHIPPED. package.json carried

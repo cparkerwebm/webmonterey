@@ -144,6 +144,13 @@ interface Props {
    */
   analytics?: boolean;
   /**
+   * Render the site's `structuredData` component. Default true.
+   *
+   * Set false on a route that emits its own graph through the `head` slot - the package's
+   * /webmaster page does, about the agency - so two nodes never claim the same page `@id`.
+   */
+  structuredData?: boolean;
+  /**
    * The back-to-top control. Default true.
    *
    * It rendered on every page of every site with nothing to turn it off - a small thing, and
@@ -170,6 +177,7 @@ const {
   shareImageWidth = measuredShareImage?.width ?? null,
   shareImageHeight = measuredShareImage?.height ?? null,
   analytics = true,
+  structuredData: renderStructuredData = true,
   scrollTop = true,
 } = Astro.props;
 
@@ -351,7 +359,7 @@ const StructuredData = structuredData;
     */
     }
     {
-      StructuredData && !noindex && (
+      StructuredData && renderStructuredData && !noindex && (
         <StructuredData title={title} description={description} image={shareImageUrl} />
       )
     }

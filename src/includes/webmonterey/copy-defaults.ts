@@ -67,6 +67,13 @@ export interface Copy {
     /** `{domain}` is replaced with the site's domain. */
     footerNotice: string;
   };
+  /** The /webmaster page. `intro` wraps the agency link: `before` <a>WebMonterey</a> `after`. */
+  webmaster: {
+    title: string;
+    description: string;
+    intro: { before: string; after: string };
+    body: string[];
+  };
 }
 
 /*
@@ -124,6 +131,19 @@ export const DEFAULT_COPY: Copy = {
     autoresponseHeading: 'What you sent us',
     reference: 'Reference: #{id}',
     footerNotice: 'This is an automated notification for your account at the {domain} website.',
+  },
+  webmaster: {
+    title: 'Our Webmaster',
+    description:
+      'This website was designed, built and managed by WebMonterey, a webmaster maintenance service in Monterey, California.',
+    intro: {
+      before: 'This website was designed, built and managed by',
+      after:
+        ', a webmaster maintenance service in Monterey, California. WebMonterey handles the hosting, security, updates and ongoing care of the site so that we can focus on what we do.',
+    },
+    body: [
+      "If you have a question about this website, notice something that isn't working, or have trouble using a page, please let WebMonterey know and they will take care of it.",
+    ],
   },
 };
 

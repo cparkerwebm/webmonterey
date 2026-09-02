@@ -217,7 +217,7 @@ test('a site with components but no credit import warns', () => {
   const ctx = base({
     components: new Map([['src/components/regions/footer/footer.astro', '<footer>hi</footer>']]),
   });
-  const result = runCheck('agency-credit', ctx);
+  const result = runCheck('webmaster-credit', ctx);
   assert.equal(result.status, 'warn');
   assert.match(result.detail!, /footer component/);
 });
@@ -227,15 +227,15 @@ test('a footer that imports the credit passes', () => {
     components: new Map([
       [
         'src/components/regions/footer/footer.astro',
-        `import Credit from '@cparkerwebm/webmonterey/webmonterey/credits/Credit.astro';`,
+        `import Webmaster from '@cparkerwebm/webmonterey/webmonterey/webmaster/Webmaster.astro';`,
       ],
     ]),
   });
-  assert.equal(runCheck('agency-credit', ctx).status, 'pass');
+  assert.equal(runCheck('webmaster-credit', ctx).status, 'pass');
 });
 
 test('a site with no components yet is not nagged', () => {
-  assert.equal(runCheck('agency-credit', base()).status, 'pass');
+  assert.equal(runCheck('webmaster-credit', base()).status, 'pass');
 });
 
 test('a comment explaining a trap does not trip the check that enforces it', () => {
@@ -274,7 +274,7 @@ test("WebMonterey's own site is not asked to credit itself", () => {
     site: { client: 'WebMonterey', domain: 'webmonterey.com' },
     components: new Map([['src/components/regions/footer/footer.astro', '<footer>x</footer>']]),
   });
-  assert.equal(runCheck('agency-credit', ctx).status, 'pass');
+  assert.equal(runCheck('webmaster-credit', ctx).status, 'pass');
 });
 
 test('a cron with no custom entrypoint FAILS, and names the fix', () => {

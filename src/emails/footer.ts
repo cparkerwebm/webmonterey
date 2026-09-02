@@ -14,7 +14,7 @@
  * constant — and a caller that has to remember to pass the year eventually forgets, which
  * shows up as a stale copyright the following January.
  */
-import { CREDIT_TEXT, creditUrl } from '../includes/webmonterey/credits/credit.ts';
+import { CREDIT_TEXT, creditUrl } from '../includes/webmonterey/webmaster/webmaster.ts';
 import { DEFAULT_COPY, fill } from '../includes/webmonterey/copy-defaults.ts';
 
 export interface EmailFooterInput {
@@ -75,13 +75,13 @@ export function renderFooterHtml(input: EmailFooterInput): string {
    * in a browser is the expected behavior, so the warning would be noise about something no
    * reader was surprised by. Nothing is lost that email a11y actually asks for.
    *
-   * `title` is absent from both links ON PURPOSE, here and in Credit.astro. It is not reliably
+   * `title` is absent from both links ON PURPOSE, here and in Webmaster.astro. It is not reliably
    * announced by screen readers, is unreachable by keyboard and touch entirely, and either
    * duplicates the link text or competes with it for the accessible name. The link text is the
    * accessible name; that is the mechanism that works.
    *
    * `rel="noopener"` without `noreferrer`, also on purpose: the referrer IS the attribution.
-   * Stripping it would leave only utm_content. See credit.ts.
+   * Stripping it would leave only utm_content. See webmaster.ts.
    */
   return `    <div style="max-width:640px;margin:0 auto;padding:24px 32px 8px;text-align:center;font-size:13px;line-height:1.6;color:#3f3f3f;">
       <p style="margin:0;">&copy; ${year} ${escapeHtml(input.client)}</p>

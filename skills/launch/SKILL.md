@@ -1,6 +1,6 @@
 ---
 name: launch
-description: Launch a WebMonterey client site onto its real domain - structured data, Turnstile, sending domain, production secrets, remote migrations, custom domain, verification, and the environment flip. Use for "launch the site", "point the domain at it", "we're going live", "take it out of preview".
+description: Launch a WebMonterey client site onto its real domain - build audit (alt text, links, sitemap), structured data, Turnstile, sending domain, production secrets, remote migrations, custom domain, verification, analytics confirmation, and the environment flip. Use for "launch the site", "point the domain at it", "we're going live", "take it out of preview".
 ---
 
 # Launch
@@ -15,9 +15,34 @@ npx webm doctor
 npm run build
 ```
 
-Both clean. Doctor's warnings about placeholder artwork and the missing agency credit become
+Both clean. Doctor's warnings about placeholder artwork and the missing webmaster credit become
 blocking here: replace the seeded favicons and share image with the client's own, and confirm
-the footer imports `Credit.astro`.
+the footer imports `Webmaster.astro` - it links to the `/webmaster` page every site has, and
+without the credit that page is reachable from nothing.
+
+## 1b. Audit the build
+
+```sh
+npx webm audit
+```
+
+It reads `dist/client` and reports three things a person never checks exhaustively on a
+forty-page site. Fix each and rebuild until it is clean:
+
+- **Images with no `alt` attribute.** Write the alt text yourself: open the image, read the
+  copy around it, and describe what it shows in that context - not what it is ("photo"), what it
+  says. A purely decorative image gets `alt=""`, declared explicitly. The alt lives wherever the
+  `<img>` is authored: the component's markup, or the block's page JSON if the schema carries it.
+  Do not leave one for later; a missing alt on a launched site is an accessibility failure and a
+  lost image-search result.
+- **Broken internal links.** Every `href` must land on a built page or a route in
+  `run_worker_first`. A typo'd slug, a page that was renamed, a form action that moved.
+- **The sitemap.** Built, advertised in `robots.txt`, every URL on the production domain and
+  landing on a page. After launch, fetch `https://<domain>/sitemap-index.xml` in a browser and
+  submit it in Search Console.
+
+External links are probed too and reported as warnings: many sites refuse anything that is not a
+browser, so open each flagged one before calling it broken.
 
 ## 2. Structured data
 
@@ -159,10 +184,25 @@ curl -H "Sec-Fetch-Dest: document" -H "Sec-Fetch-Mode: navigate" https://<domain
 That header is what the asset router branches on. Without it curl gets the real page and Chrome
 gets the 404.
 
-**A form test before step 10 goes to `stagingEmail`** with `[staging → …]` in the subject naming
+**A form test before step 11 goes to `stagingEmail`** with `[staging → …]` in the subject naming
 who it was really for. That is the system working - check that inbox, not the client's.
 
-## 10. Hand the site its email back, and record the launch
+## 10. Analytics - two confirmations, asked out loud
+
+Neither of these can be checked from the repo, so **ask, and wait for the answer.** Do not
+proceed on an assumption, and do not mark either done because the field is filled in.
+
+1. **"Is Google Tag Manager configured for this site?"** - meaning the container exists, its
+   tags are published (not just saved), and `gtmId` in `webmonterey.json` is that container. A
+   `gtmId` with an unpublished container loads a script that fires nothing. If the site has no
+   analytics by agreement, confirm that instead and move on.
+2. **"Has the launch annotation been added in Google Analytics?"** - a dated note on the
+   property for the launch, so the traffic change that follows has an explanation next to it
+   when someone looks a year from now.
+
+Record the answers in the launch commit message.
+
+## 11. Hand the site its email back, and record the launch
 
 In one change:
 

@@ -171,6 +171,12 @@ try {
     !existsSync(join(dist, 'webm/index.html')),
     'a dev workbench shipped to the client domain',
   );
+  check(
+    'the webmaster page and its share image are built',
+    read('webmaster/index.html').includes('application/ld+json') &&
+      existsSync(join(dist, 'webmaster/og.png')),
+    'the injected /webmaster route or its og.png endpoint did not build',
+  );
 
   /*
    * THE CHILD-THEME SEAMS. The package is a WordPress parent theme and this repo is the child,

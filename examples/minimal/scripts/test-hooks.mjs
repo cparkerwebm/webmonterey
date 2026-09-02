@@ -5,7 +5,7 @@
  * would otherwise force a choice between "no tests" and "rewrite every import in the app to
  * suit the test runner". The app wins that argument, so the adaptation lives here.
  *
- *   1. EXTENSIONLESS RELATIVE IMPORTS — `from '../credits/credit'`. Node ESM requires the
+ *   1. EXTENSIONLESS RELATIVE IMPORTS — `from '../webmaster/webmaster'`. Node ESM requires the
  *      extension; bundlers resolve it. The resolve hook appends `.ts` when the bare specifier
  *      does not resolve but the `.ts` file exists.
  *

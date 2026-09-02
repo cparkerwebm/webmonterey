@@ -73,7 +73,7 @@ quiet.
 | Consent — ConsentInit, CookieConsent, the `whenConsented` API | A legal surface where one fix must reach everywhere. |
 | The form pipeline | Validate → honeypot → Turnstile → D1 → notify → autoresponse. The ordering is load-bearing and was reasoned about once. |
 | The email templates and the Mailgun sender with staging redirection | Rendered from data; the redirect is the one place every send passes through. |
-| The block router, the base layout, robots.txt, the 404 | Same for every site. |
+| The block router, the base layout, robots.txt, the 404, the `/webmaster` page | Same for every site. |
 | The Astro integration and its virtual modules | The mechanism by which a package reads files in the repo it is installed into. |
 | The CI workflow, `check-node.mjs`, `test-hooks.mjs` | Repo tooling a site never edits. |
 | The `webm` CLI and the skills | The fleet's operating procedure, versioned with the code it operates. |
@@ -203,6 +203,7 @@ proved a rule there never shipped; that test is permanent.
 | --- | --- | --- |
 | `/_actions/*` | Astro | The form endpoint. Always in `run_worker_first`. |
 | `/webm` | package | The component scratch page. **Dev server only** — it does not exist in a build. |
+| `/webmaster`, `/webmaster/og.png` | package | The page every site has: who built it, who to call. Indexable, in the sitemap; the footer credit links here and this page carries the one outbound link to the agency, with its UTM parameters. Its share image is served from the package so a redesign reaches every site on `npm update`. Off switch: `webmaster: false`. |
 | `/<app.path>/*` | site | The web app. Reserved on every site; see below. |
 
 ### The web app namespace, reserved from day one
@@ -387,7 +388,11 @@ source strips comments first: three checks have fired on their own documentation
 | `environment` | a launched site diverting client email, or a preview mailing real contacts |
 | `staging-email` | every send on the preview throws |
 | `image-on-demand` | a dead `/_image` URL in production only |
-| `changeme`, `timezone`, `skills-synced`, `mcp-docs`, `placeholder-branding`, `seeded-files`, `literal-values`, `select-element`, `agency-credit` | see each check's `silentAs` |
+| `changeme`, `timezone`, `skills-synced`, `mcp-docs`, `placeholder-branding`, `seeded-files`, `literal-values`, `select-element`, `webmaster-credit` | see each check's `silentAs` |
+
+`webm audit` is the doctor's sibling for things only a **build** can answer — images with no alt
+attribute, internal links that land nowhere, a sitemap that is missing, unadvertised or lists a
+page that does not exist — plus a probe of every external link. It runs in `/webm:launch`.
 
 A false positive teaches people the doctor cries wolf, which is worse than a miss. Warnings are
 for a site mid-build; failures are for things that are wrong on a launched site.

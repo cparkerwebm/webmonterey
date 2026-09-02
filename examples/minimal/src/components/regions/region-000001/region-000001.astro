@@ -1,15 +1,16 @@
 ---
 /*
- * The site footer, carrying the agency credit.
+ * The site footer, carrying the webmaster credit.
  *
- * Exists in this example so the built output can be asserted: the credit link must open in a new
- * tab, and that is only observable in dist/, not in a unit test.
+ * Exists in this example so the built output can be asserted: the credit is an internal link to
+ * /webmaster, and that page's outbound link to the agency opens in a new tab - both only
+ * observable in dist/, not in a unit test.
  */
-import Credit from '@cparkerwebm/webmonterey/webmonterey/credits/Credit.astro';
+import Webmaster from '@cparkerwebm/webmonterey/webmonterey/webmaster/Webmaster.astro';
 ---
 
 <footer class="webm-footer">
-  <Credit />
+  <Webmaster />
 </footer>
 
 <style>

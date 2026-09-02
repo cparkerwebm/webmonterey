@@ -119,13 +119,46 @@ test('dialog keeps its auto margin, or every modal pins to the top-left', () => 
 
 /* -------------------------------------------------------------------- links */
 
-test('the agency credit opens in a new tab', () => {
-  // Shipped with rel="noopener" and no target, which does nothing at all - found broken on live
-  // client sites.
-  const credit = html.match(/<a[^>]*utm_campaign=credits[^>]*>/);
-  assert.ok(credit, 'no credit link in the built page');
-  assert.match(credit[0], /target="_blank"/);
-  assert.match(credit[0], /rel="[^"]*noopener/);
+test('the footer credit is an internal link to the webmaster page', () => {
+  // It used to leave the site. Now the visitor stays, and the page they land on carries the one
+  // outbound link.
+  const credit = html.match(/<a[^>]*href="\/webmaster"[^>]*>/);
+  assert.ok(credit, 'no credit link to /webmaster in the built page');
+  assert.doesNotMatch(credit[0], /target=/, 'an internal link must not open a new tab');
+});
+
+test('the webmaster page exists, is indexable, and carries the agency link with its UTMs', () => {
+  const page = readFileSync(join(DIST, 'webmaster/index.html'), 'utf8');
+  assert.doesNotMatch(page, /name="robots"[^>]*noindex/, 'the page must be indexable');
+  assert.match(page, /rel="canonical"/);
+  const link = page.match(/<a[^>]*href="https:\/\/webmonterey\.com\/[^"]*"[^>]*>/);
+  assert.ok(link, 'no outbound agency link on the webmaster page');
+  assert.match(link[0], /utm_campaign=webmaster/);
+  assert.match(link[0], /utm_content=minimal_example_com/, 'the production domain, underscored');
+  assert.match(link[0], /target="_blank"/);
+  assert.match(link[0], /rel="[^"]*noopener/);
+  assert.doesNotMatch(link[0], /noreferrer/, 'the referrer is the attribution');
+});
+
+test('the webmaster page declares its own share image and structured data', () => {
+  const page = readFileSync(join(DIST, 'webmaster/index.html'), 'utf8');
+  assert.match(
+    page,
+    /property="og:image" content="https:\/\/minimal\.example\.com\/webmaster\/og\.png"/,
+  );
+  assert.match(page, /og:image:width" content="1200"/);
+  assert.ok(
+    existsSync(join(DIST, 'webmaster/og.png')),
+    'the share image is served from the package',
+  );
+  assert.match(page, /application\/ld\+json/);
+  assert.match(page, /https:\/\/webmonterey\.com\/#organization/, 'points at the agency entity');
+  assert.match(page, /<h1>Our Webmaster<\/h1>/);
+});
+
+test('the sitemap lists the webmaster page', () => {
+  const sitemap = readFileSync(join(DIST, 'sitemap-0.xml'), 'utf8');
+  assert.ok(sitemap.includes('/webmaster'), 'the page must be in the sitemap');
 });
 
 /* ------------------------------------------------------------------ indexing */
@@ -152,8 +185,10 @@ test('robots.txt disallows nothing that carries a noindex tag', () => {
 
 test('the sitemap excludes the noindex workspace route', () => {
   const sitemap = readFileSync(join(DIST, 'sitemap-0.xml'), 'utf8');
-  assert.ok(
-    !sitemap.includes('/webm'),
+  // /webm exactly - /webmaster is a real, indexable page and belongs there.
+  assert.doesNotMatch(
+    sitemap,
+    /\/webm(<|\/)/,
     'listing a noindex page in a sitemap is a Search Console error',
   );
 });

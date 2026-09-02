@@ -11,6 +11,42 @@ build. See `/webm:upgrade`.
 
 ---
 
+## 1.2.0 — 2026-09-02
+
+### Added
+
+- **Every site has a `/webmaster` page.** Injected by the integration, rendered with the site's
+  own chrome, indexable and in the sitemap. It says who designed, built and manages the site and
+  who to contact when something is wrong, carries its own share image (served from the package at
+  `/webmaster/og.png`, so a redesign reaches every site on `npm update`) and its own structured
+  data — a `WebPage` about the agency's `Organization`, using the same `@id` the agency's own site
+  declares. Every word is overridable through `copy.webmaster`. Off switch: `webmaster: false` on
+  the integration.
+
+- **`webm audit`** — the pre-launch checks only a build can answer: images with no `alt`
+  attribute (an explicit `alt=""` is fine), internal links that land on no page or Worker route,
+  and a sitemap that is missing, unadvertised, or lists a page that was not built. External links
+  are probed and reported as warnings. `/webm:launch` runs it and says how to act on each finding.
+
+- **`/webm:launch` asks two questions out loud** before the flip: is Google Tag Manager
+  configured and published for this site, and has the launch annotation been added in Google
+  Analytics. Neither is knowable from the repo, so the skill waits for the answer.
+
+### Changed
+
+- **The footer credit is an internal link.** `Powered by WebMonterey` now goes to the site's own
+  `/webmaster` page instead of leaving the site; that page carries the one outbound link, with
+  the UTM parameters (`utm_campaign=webmaster`). The email footer keeps the outbound link — an
+  email cannot usefully point at a page on the site it is about.
+
+  **On an existing site:** the import moves —
+  `@cparkerwebm/webmonterey/webmonterey/credits/Credit.astro` is now
+  `@cparkerwebm/webmonterey/webmonterey/webmaster/Webmaster.astro`, and the module
+  `webmonterey/credits` is `webmonterey/webmaster`. The doctor check is `webmaster-credit`. The
+  site's `structuredData` component is not rendered on `/webmaster`; the page emits its own.
+
+---
+
 ## 1.1.0 — 2026-09-02
 
 ### Changed

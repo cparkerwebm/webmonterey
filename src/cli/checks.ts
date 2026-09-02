@@ -676,14 +676,16 @@ export const CHECKS: Check[] = [
     },
   },
   {
-    id: 'agency-credit',
-    title: 'Something renders the agency credit',
-    silentAs: 'the site ships with no "Powered by WebMonterey" and nobody notices for months',
+    id: 'webmaster-credit',
+    title: 'Something renders the webmaster credit',
+    silentAs:
+      'the site ships with no "Powered by WebMonterey", the /webmaster page is orphaned, and nobody notices for months',
     run(ctx) {
       /*
        * The package ships no footer - it ships no components at all - so the credit is imported
        * by whichever site component renders the footer. That is the right seam and it is also
-       * easy to simply never do, which is how live client sites ended up without it.
+       * easy to simply never do, which is how live client sites ended up without it. Without it
+       * the /webmaster page the package injects is reachable from nothing.
        *
        * A warning, not a failure: a site mid-build has no footer yet, and failing there trains
        * people to ignore the doctor. `/webm:launch` is where it becomes blocking.
@@ -697,11 +699,11 @@ export const CHECKS: Check[] = [
       if (ctx.site.domain === 'webmonterey.com') return pass;
 
       for (const src of ctx.components.values()) {
-        if (/webmonterey\/credits/.test(stripComments(src))) return pass;
+        if (/webmonterey\/webmaster/.test(stripComments(src))) return pass;
       }
       return warn(
-        'no component imports @cparkerwebm/webmonterey/webmonterey/credits/Credit.astro. ' +
-          'The footer component is where it goes.',
+        'no component imports @cparkerwebm/webmonterey/webmonterey/webmaster/Webmaster.astro. ' +
+          'The footer component is where it goes; it links to the /webmaster page.',
       );
     },
   },

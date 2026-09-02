@@ -1,0 +1,52 @@
+---
+/*
+ * The webmaster credit. Goes in the site footer.
+ *
+ *   <Webmaster />   ->   Powered by WebMonterey
+ *
+ * AN INTERNAL LINK. It points at the site's own /webmaster page, which the package injects on
+ * every site - so the visitor stays on the client's site, and the page they land on says who
+ * built it and who to contact when something is wrong. The outbound link to the agency lives on
+ * that page, once, with its UTM parameters. See webmaster.ts for why.
+ *
+ * No target, no rel: this is an ordinary same-site link and it navigates like one. The old
+ * outbound credit opened a new tab; an internal link that did would be a bug.
+ *
+ * NO `title` ATTRIBUTE, and that is the correct state rather than an omission. `title` is not
+ * reliably announced by screen readers, is unreachable by keyboard and touch entirely, and either
+ * duplicates the link text or competes with it for the accessible name.
+ */
+import { CREDIT_TEXT, WEBMASTER_PATH } from './webmaster.ts';
+
+interface Props {
+  class?: string;
+}
+
+const { class: className } = Astro.props;
+---
+
+<p class:list={['webm-credit', className]}>
+  <a href={WEBMASTER_PATH}>{CREDIT_TEXT}</a>
+</p>
+
+<style>
+  @layer webm.components.core {
+    .webm-credit {
+      font-size: var(--webm-font-size-xs);
+      color: var(--webm-text-muted);
+    }
+
+    /*
+     * Underline at the text's own color. An underline in --webm-border-subtle is ~1.3:1 on
+     * white - effectively invisible, leaving nothing to mark the link as clickable.
+     */
+    .webm-credit a {
+      color: inherit;
+      text-decoration-color: currentColor;
+    }
+
+    .webm-credit a:hover {
+      color: var(--webm-link-hover);
+    }
+  }
+</style>

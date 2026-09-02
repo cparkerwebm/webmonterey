@@ -1,0 +1,117 @@
+---
+/*
+ * /webmaster - the page every site has, saying who built it and who to call.
+ *
+ * Injected by the integration on every site (with a `webmaster: false` off switch), rendered
+ * through the site's own layout so it carries the client's header, footer and tokens. INDEXABLE
+ * and in the sitemap, on purpose: the footer credit links here rather than off the site, and this
+ * page carries the one outbound link to the agency - a followed link on a real page with real
+ * copy, which is a backlink rather than a footer decoration. It is also the answer to "something
+ * is wrong with the website, who do I contact?" on the site itself.
+ *
+ * Every word is overridable through `copy.webmaster` in webmonterey.json, like everything else
+ * the package puts in front of a visitor.
+ *
+ * ITS OWN STRUCTURED DATA, and the site's is switched off for this route. The graph here is about
+ * the agency - a WebPage whose subject is the agency's Organization, using the same `@id` the
+ * agency's own site declares, so every client page points at one entity rather than a hundred
+ * copies. The site's structuredData component would also emit a WebPage for this URL, and two
+ * nodes claiming the same `@id` is worse than one.
+ *
+ * The share image is served from the package at /webmaster/og.png, so a redesign reaches every
+ * site on `npm update` and nothing has to be seeded into public/.
+ */
+import Base from '../layouts/base.astro';
+import { copy } from '../includes/webmonterey/copy.ts';
+import {
+  AGENCY,
+  creditUrl,
+  WEBMASTER_OG_PATH,
+} from '../includes/webmonterey/webmaster/webmaster.ts';
+import { domain, hasDomain } from '../includes/webmonterey/site.ts';
+import { compact, renderJsonLd } from '../includes/webmonterey/structured-data/nodes.ts';
+import { pageHeader } from 'virtual:webm/registry';
+
+const PageHeader = pageHeader;
+const text = copy.webmaster;
+const agencyHref = hasDomain ? creditUrl(domain, 'website') : AGENCY.url;
+
+/*
+ * The graph needs a real origin for stable @id values, which is the same gate the canonical tag
+ * and the site's own structured data use. Until `domain` is set there is no page @id to claim.
+ */
+let jsonLd: string | null = null;
+if (Astro.site) {
+  const url = new URL(Astro.url.pathname, Astro.site).href;
+  jsonLd = renderJsonLd([
+    compact({
+      '@type': 'WebPage',
+      '@id': `${url}#webpage`,
+      url,
+      name: text.title,
+      description: text.description,
+      isPartOf: { '@id': new URL('#website', Astro.site).href },
+      about: { '@id': AGENCY.id },
+      inLanguage: 'en',
+    }),
+    compact({
+      '@type': 'ProfessionalService',
+      '@id': AGENCY.id,
+      name: AGENCY.name,
+      url: AGENCY.url,
+      description: AGENCY.description,
+      address: { '@type': 'PostalAddress', ...AGENCY.address },
+      sameAs: [...AGENCY.sameAs],
+    }),
+  ]);
+}
+---
+
+<Base
+  title={text.title}
+  description={text.description}
+  shareImage={WEBMASTER_OG_PATH}
+  shareImageWidth={1200}
+  shareImageHeight={630}
+  structuredData={false}
+>
+  <Fragment slot="head">
+    {jsonLd && <script type="application/ld+json" set:html={jsonLd} />}
+  </Fragment>
+
+  {
+    /*
+     * The site's page header if it declares one, so this page looks like every other page on the
+     * site; the router's plain <h1> otherwise. Same fallback the block router uses.
+     */
+    PageHeader ? (
+      <PageHeader title={text.title} description={text.description} />
+    ) : (
+      <section class="webm-section" data-space="sm">
+        <div class="webm-container" data-width="text">
+          <h1>{text.title}</h1>
+        </div>
+      </section>
+    )
+  }
+
+  <section class="webm-section" data-space="lg">
+    <div class="webm-container" data-width="text">
+      <div class="webm-stack">
+        {
+          /*
+           * The agency is named as a link in the first paragraph - the one outbound link on the
+           * site, followed, with the UTM parameters. Opens in a new tab because it leaves the
+           * site; noopener without noreferrer, because the referrer is the attribution.
+           */
+        }
+        <p>
+          {text.intro.before}
+          <a href={agencyHref} target="_blank" rel="noopener">{AGENCY.name}</a>
+          {text.intro.after}
+        </p>
+        {text.body.map((paragraph) => <p>{paragraph}</p>)}
+      </div>
+    </div>
+  </section>
+</Base>

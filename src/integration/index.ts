@@ -24,8 +24,9 @@
 import type { AstroIntegration } from 'astro';
 import sitemap from '@astrojs/sitemap';
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { compileToCss } from '../design/compile.ts';
 import { imageSize } from './image-size.ts';
@@ -67,6 +68,14 @@ export interface WebmontereyOptions {
    * Set false for a site publishing a sitemap another way, rather than having two disagree.
    */
   sitemap?: boolean;
+  /**
+   * Serve `/webmaster` and its share image. Default true.
+   *
+   * The page every site has: who built it, who to call. The footer credit links to it. A client
+   * who will not have it sets this false and the credit then has nowhere to point - so the
+   * footer should drop the credit too, and the agreement should say so.
+   */
+  webmaster?: boolean;
 }
 
 const VIRTUAL = {
@@ -78,7 +87,17 @@ const VIRTUAL = {
   custom: 'virtual:webm/custom',
   shareImage: 'virtual:webm/share-image',
   icons: 'virtual:webm/icons',
+  webmasterOg: 'virtual:webm/webmaster-og',
 } as const;
+
+/*
+ * THE WEBMASTER PAGE'S SHARE IMAGE, read here and not in the endpoint that serves it. The
+ * Cloudflare adapter builds server modules for the workerd target, where `import.meta.url` is
+ * not a file URL, so a `new URL('../assets/...', import.meta.url)` inside a route throws
+ * "Invalid URL string" at prerender. This integration runs in Node at config time, where the
+ * path is real; the bytes travel to the endpoint as base64 through a virtual module.
+ */
+const WEBMASTER_OG = fileURLToPath(new URL('../assets/webmaster-og.png', import.meta.url));
 
 /** Vite resolves virtual ids to a `\0`-prefixed form so other plugins leave them alone. */
 const resolved = (id: string) => `\0${id}`;
@@ -283,6 +302,8 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
                     }
                     case resolved(VIRTUAL.forms):
                       return `export const FORMS = ${JSON.stringify(loadForms(root))};`;
+                    case resolved(VIRTUAL.webmasterOg):
+                      return `export default ${JSON.stringify(readFileSync(WEBMASTER_OG, 'base64'))};`;
                     case resolved(VIRTUAL.registry):
                       /*
                        * Re-exported from the client repo, because every visible component lives
@@ -355,6 +376,21 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
         /* The scratch page exists in the dev server and nowhere else - see the option's note. */
         if (options.diagnosticsPage !== false && command === 'dev') {
           injectRoute({ pattern: '/webm', entrypoint: '@cparkerwebm/webmonterey/pages/webm' });
+        }
+
+        /*
+         * THE WEBMASTER PAGE, and its share image served from the package. Indexable and in the
+         * sitemap - the footer credit links here rather than off the site. See pages/webmaster.
+         */
+        if (options.webmaster !== false) {
+          injectRoute({
+            pattern: '/webmaster',
+            entrypoint: '@cparkerwebm/webmonterey/pages/webmaster',
+          });
+          injectRoute({
+            pattern: '/webmaster/og.png',
+            entrypoint: '@cparkerwebm/webmonterey/pages/webmaster-og',
+          });
         }
 
         /*
