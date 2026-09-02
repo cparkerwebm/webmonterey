@@ -36,7 +36,7 @@
     "typescript": "^6.0.3"
   },
   "bin": {
-    "webm": "./dist/webm.mjs"
+    "webm": "dist/webm.mjs"
   },
   "//exports": "The subpath map mirrors src/includes/ vendor-first tree, so an import in a client repo reads almost identically to the gen-2 relative path. `./design` deliberately contains no Astro imports so it stays testable under `node --test`.",
   "exports": {
@@ -97,5 +97,5 @@
     "test:e2e": "node scripts/e2e.mjs",
     "prepublishOnly": "node scripts/check-release.mjs"
   },
-  "//bin": "Points at the BUILT file. Node refuses to strip types for anything under node_modules, so the CLI cannot run from source once installed - see scripts/build-cli.mjs. The library still ships as .ts because Astro compiles it itself."
+  "//bin": "No leading ./ - npm 11 strips it and warns that the bin was invalid. Points at the BUILT file. Node refuses to strip types for anything under node_modules, so the CLI cannot run from source once installed - see scripts/build-cli.mjs. The library still ships as .ts because Astro compiles it itself."
 }
