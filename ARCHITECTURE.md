@@ -101,7 +101,7 @@ cparkerwebm/webmonterey          public · MIT · npmjs as @cparkerwebm/webmonte
   template/                      what `webm new` seeds and `webm sync` refreshes
   examples/minimal/              a real site CI builds on every PR
 
-webmonterey/<domain_underscored> private · one per client · unchanged by anything here
+webmonterey/<slug>                 private · one per client · unchanged by anything here
 ```
 
 **Public, on npmjs, no credential anywhere.** A public package on GitHub Packages still requires
@@ -117,28 +117,38 @@ rename is one edit.
 **MIT because clients own their sites.** Every client repo depends on this package; a client who
 leaves with their repo has to be able to build it. The plumbing is not the moat.
 
-**Nothing in this repo authenticates as the agency.** No inbox, no API key, no client list. The
-one default that used to — a staging email address — is now supplied by `webm new` from
-`git config user.email` and required by `webm doctor` when a site is staging.
+**Nothing in this repo is about the agency.** No inbox, no API key, no client list, no GitHub
+owner. The two defaults that used to be — the org a repo is created under and the staging email
+address — come from `git config webm.org` and `git config webm.stagingEmail` (falling back to
+`user.email`), set once per machine, and `webm new` refuses without the first.
 
-### Three names, three jobs
+### One name, everywhere
 
-|             | Example                                              |                              |
-| ----------- | ---------------------------------------------------- | ---------------------------- |
-| GitHub repo | `webmonterey/autire_com`                             | Full domain, **underscores** |
-| Slug        | `autire`                                             | Domain minus the TLD         |
-| Cloudflare  | `webm-autire`, `webm-autire-db`, `webm-autire-media` | The slug, prefixed           |
+The domain minus its public suffix is the GitHub repo, the Worker, the D1 database, the R2 bucket
+and any KV namespace:
 
-The slug drops the TLD because a Worker named `webm-autire-com` puts `autire-com` into every
-preview hostname, and Chrome's lookalike-domain check then warns the client their own preview
-looks fake. `webm-autire` embeds nothing that reads as a domain. `slug.ts` owns the derivation;
-`webm new` prints all three.
+| Domain             | Name           |
+| ------------------ | -------------- |
+| `example.com`      | `example`      |
+| `shop.example.com` | `shop-example` |
+| `example.co.uk`    | `example`      |
 
-### The prefix is `webm-`
+Three reasons. It is the one shape valid for every resource at once — Workers and R2 accept only
+`[a-z0-9-]`, no underscores, no dots. The TLD is dropped because a Worker named `example-com` puts
+`example-com` into every preview hostname, and Chrome's lookalike-domain check then warns the
+client their own preview looks fake; `example` embeds nothing. And in an agency account that holds
+nothing but client sites, a prefix says nothing — Cloudflare scopes every one of these names to
+the account, so another agency using the same convention on its own account cannot collide.
 
-Custom properties (`--webm-action`), class names (`.webm-section`), Cloudflare resources
-(`webm-<slug>`), the CLI, the skills namespace (`/webm:launch`). One prefix, so anything ours is
-recognizable at a glance in any file, log or dashboard.
+A second resource of one kind for the same client takes a purpose suffix (`example-portal`) and is
+the exception. `example.com` and `example.org` both want `example`; `webm new` says so, and the
+second gets a name a person chose. `slug.ts` owns the derivation.
+
+### The prefix is `webm-`, in code
+
+Custom properties (`--webm-action`), class names (`.webm-section`), the CLI, the skills namespace
+(`/webm:launch`). One prefix in a site's code, so anything the package owns is recognizable at a
+glance in a file. Cloud resources do not carry it — see above.
 
 ---
 
@@ -426,7 +436,7 @@ a page.
 | 2 | Zero visible components ship | 1 |
 | 3 | Every default has a documented way out; removing a seam is a breaking change | 1 |
 | 4 | Public, npmjs, MIT, personal scope; no credential anywhere | 2 |
-| 5 | Repo `<domain_underscored>`, slug `<domain-minus-TLD>`, Cloudflare `webm-<slug>` | 2 |
+| 5 | One name everywhere — the domain minus its TLD — for repo, Worker, D1, R2, KV | 2 |
 | 6 | Tokens are `design.json`, compiled at build; no `tokens.css` | 3 |
 | 7 | Eight layers in one list, emitted inline ahead of every stylesheet | 4 |
 | 8 | `/webm` scratch page is dev-only | 5 |

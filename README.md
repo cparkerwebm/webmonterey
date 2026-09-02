@@ -23,10 +23,15 @@ client's repo. Every default has a documented way to opt out of it.
 ## Creating a client site
 
 ```sh
+git config --global webm.org <your-github-owner>      # once per machine
 npx @cparkerwebm/webmonterey new example.com --client="Example Co"
-cd example_com
+cd example
 claude          # then /webm:start
 ```
+
+One name everywhere: `example.com` becomes `example` — the repo, the Worker, the D1 database and
+the R2 bucket. The domain minus its TLD is the one shape every resource accepts, and it keeps a
+domain out of preview hostnames, which is what trips Chrome's lookalike warning.
 
 `webm new` writes the identity and design files, a working contact form, a home page and the
 fleet skills, then runs `git init` and `npm install`. It touches nothing outside the directory.

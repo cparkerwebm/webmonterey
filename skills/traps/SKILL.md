@@ -122,8 +122,8 @@ wildcards, and the free tier allows 10 hostnames per widget.
 
 **Chrome's "This site looks fake" warning on preview links comes from the Worker's NAME.** Its
 lookalike-domain check flags "domains that embed other domain names within their own hostname",
-and a Worker called `webm-acme-com` puts `acme-com` into every preview hostname. That is why
-Workers are named `webm-<slug>` with the TLD dropped — `webm-acme` embeds nothing that reads as a
+and a Worker called `acme-com` puts `acme-com` into every preview hostname. That is why every
+resource is named by the slug with the TLD dropped — `acme` embeds nothing that reads as a
 domain. `webm new` does this; do not name a Worker after the full domain.
 
 If a warning still appears on a correctly named Worker it is a URL-shape false positive, not a

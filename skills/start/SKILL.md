@@ -35,19 +35,25 @@ cd <domain_with_underscores>
 ```
 
 It writes the identity files, a working contact form, a home page, the fleet skills, and runs
-`git init` and `npm install`. Nothing outside the directory is touched.
+`git init` and `npm install`. Nothing outside the directory is touched. The GitHub owner comes
+from `git config webm.org` (set once per machine) or `--org`; the staging inbox from
+`git config webm.stagingEmail`, falling back to `user.email`.
 
-**Three names, and they differ on purpose:**
+**One name, everywhere.** The domain minus its TLD is the GitHub repo, the Worker, the D1
+database, the R2 bucket and any KV namespace:
 
-|             | Example                                              |                              |
-| ----------- | ---------------------------------------------------- | ---------------------------- |
-| GitHub repo | `webmonterey/autire_com`                             | Full domain, **underscores** |
-| Slug        | `autire`                                             | Domain minus the TLD         |
-| Cloudflare  | `webm-autire`, `webm-autire-db`, `webm-autire-media` | The slug, prefixed           |
+| Domain             | Name           |
+| ------------------ | -------------- |
+| `example.com`      | `example`      |
+| `shop.example.com` | `shop-example` |
+| `example.co.uk`    | `example`      |
 
-The slug drops the TLD because a Worker named `webm-autire-com` puts `autire-com` into every
-preview hostname, and Chrome's lookalike check then warns the client the site looks fake.
-`autire.com` and `autire.org` both want `autire` - check the slug is free before committing.
+The TLD is dropped because a Worker named `example-com` puts `example-com` into every preview
+hostname, and Chrome's lookalike check then warns the client the site looks fake. A second
+resource of one kind for the same client takes a purpose suffix: `example-portal`.
+
+`example.com` and `example.org` both want `example`. Check the name is free in the account
+before committing; the second one gets a name chosen by you, not by the tool.
 
 ## 2. Create the GitHub repo
 
@@ -79,9 +85,9 @@ Create only what the site needs. A marketing site with a contact form needs D1; 
 R2 until someone has a video.
 
 ```sh
-npx wrangler d1 create webm-<slug>-db --update-config     # writes the binding into wrangler.jsonc
-npx wrangler d1 migrations apply webm-<slug>-db --local
-npx wrangler r2 bucket create webm-<slug>-media           # only if media is going to R2
+npx wrangler d1 create <slug> --update-config     # writes the binding into wrangler.jsonc
+npx wrangler d1 migrations apply <slug> --local
+npx wrangler r2 bucket create <slug>              # only if media is going to R2
 ```
 
 Set `features.d1: true` once the binding exists. `features.turnstile` waits for `/webm:launch`,
@@ -94,8 +100,8 @@ forms.** Miss one and it returns 200 to curl and a 404 page to Chrome. `webm doc
 ## 5. Workers Builds
 
 Connect the repo in the Cloudflare dashboard: **Workers & Pages → Create → Import a repository**.
-The Worker name must be `webm-<slug>` exactly - Workers Builds fails on a mismatch with
-`wrangler.jsonc`.
+The Worker name must be the slug exactly as `wrangler.jsonc` has it - Workers Builds fails on a
+mismatch.
 
 No build variables are needed. **Push to deploy from then on** - a `wrangler deploy` from a
 laptop creates a version no build produced, so history stops describing what is live, and the

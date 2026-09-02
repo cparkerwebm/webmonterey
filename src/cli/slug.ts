@@ -1,15 +1,21 @@
 /*
- * Turning a domain into the names everything else uses.
+ * Turning a domain into the ONE name everything else uses.
  *
- * TWO NAMES, DELIBERATELY DIFFERENT.
+ *   example.com        ->  example
+ *   shop.example.com   ->  shop-example
+ *   example.co.uk      ->  example
  *
- *   GitHub repo        <domain_underscored>   webmonterey/autire_com
- *   Cloudflare stuff   webm-<slug>            webm-autire, webm-autire-db, webm-autire-media
+ * The GitHub repo, the Worker, the D1 database, the R2 bucket and any KV namespace all carry
+ * that same name. It is the domain minus its public suffix, which is the one shape valid for
+ * every resource at once - Workers and R2 accept only `[a-z0-9-]`, and in an agency account that
+ * holds nothing but client sites a prefix says nothing.
  *
- * The repo keeps the full domain so it is unambiguous which site it serves. Cloudflare drops the
- * TLD token because `webm-autire-com` contains `autire-com`, which Chrome's lookalike check reads
- * as a registrable domain - and every preview link then warns the client the site looks fake.
- * `webm-autire` has nothing in it that looks like a domain. See ARCHITECTURE.md section 5.
+ * The TLD is dropped for a reason beyond brevity: a Worker named `example-com` puts `example-com`
+ * into every preview hostname, and Chrome's lookalike-domain check reads that as a registrable
+ * domain and warns the client their own preview looks fake. `example` embeds nothing.
+ *
+ * A second resource of the same kind for one client takes a purpose suffix - `example-portal` -
+ * and is the exception, not the pattern.
  */
 
 /** Public suffixes that take two labels, so `example.co.uk` slugs to `example`. */
@@ -64,27 +70,15 @@ export function normalizeDomain(input: string): string {
 }
 
 /**
- * The GitHub repo name. Dots become UNDERSCORES: `autire.com` -> `autire_com`.
- *
- * Underscores, not dashes, and not the slug. Three names, three jobs:
- *
- *   repo       autire_com     the full domain, unambiguous about which site this is
- *   slug       autire         no TLD, because a Cloudflare Worker named webm-autire-com
- *                             embeds autire-com and Chrome reads that as a domain
- *   worker     webm-autire    the slug, prefixed
- *
- * A rebuild creates a NEW repo under the underscore name beside the old dashed one, which is what
- * lets the old site keep serving until the cutover.
- */
-export function repoName(domain: string): string {
-  return normalizeDomain(domain).replace(/\./g, '_');
-}
-
-/**
  * The client slug - the domain with its public suffix removed.
  *
- * `autire.com` -> `autire`, `example.co.uk` -> `example`. Subdomains are kept, because
- * `shop.example.com` and `example.com` are different clients if they are ever both ours.
+ * `example.com` -> `example`, `example.co.uk` -> `example`. Subdomains are kept, joined with a
+ * dash, because `shop.example.com` and `example.com` are different sites if they are ever both
+ * ours - and an indexable subdomain is always its own site.
+ *
+ * `example.com` and `example.org` slug to the same thing. That is a real collision inside one
+ * account, and `webm new` says so rather than silently picking - the second one gets a name
+ * chosen by a person.
  */
 export function slugFor(domain: string): string {
   const clean = normalizeDomain(domain);
@@ -95,15 +89,16 @@ export function slugFor(domain: string): string {
   return kept.join('-');
 }
 
-/** Every Cloudflare resource name for a site, from one domain. */
+/** The GitHub repo name. The slug - one name, everywhere. */
+export function repoName(domain: string): string {
+  return slugFor(domain);
+}
+
+/**
+ * Every resource name for a site, from one domain. They are all the slug; the fields exist so a
+ * caller says which resource it means, and so a purpose suffix has an obvious place to go.
+ */
 export function resourceNames(domain: string) {
   const slug = slugFor(domain);
-  return {
-    slug,
-    repo: repoName(domain),
-    worker: `webm-${slug}`,
-    d1: `webm-${slug}-db`,
-    r2Media: `webm-${slug}-media`,
-    r2App: `webm-${slug}-app`,
-  };
+  return { slug, repo: slug, worker: slug, d1: slug, r2: slug, kv: slug };
 }

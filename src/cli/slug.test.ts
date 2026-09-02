@@ -20,24 +20,11 @@ test('something that is not a domain is refused, naming what was expected', () =
   assert.throws(() => normalizeDomain('exa mple.com'), DomainError);
 });
 
-test('the repo keeps the full domain, dots to UNDERSCORES', () => {
-  assert.equal(repoName('autire.com'), 'autire_com');
-  assert.equal(repoName('friendsofthemarinalibrary.org'), 'friendsofthemarinalibrary_org');
-});
-
-test('the three names are all different, and each has a job', () => {
-  // repo is unambiguous about the site; slug drops the TLD so Chrome does not flag preview
-  // hostnames; worker is the slug prefixed.
-  const n = resourceNames('autire.com');
-  assert.equal(n.repo, 'autire_com');
-  assert.equal(n.slug, 'autire');
-  assert.equal(n.worker, 'webm-autire');
-});
-
 test('the slug drops the TLD - this is what stops Chrome flagging preview links', () => {
-  // webm-autire-com contains autire-com, which reads as a domain. webm-autire does not.
-  assert.equal(slugFor('autire.com'), 'autire');
-  assert.equal(slugFor('stevenglaze.com'), 'stevenglaze');
+  // A Worker named example-com puts example-com into every preview hostname, which Chrome reads
+  // as a registrable domain. `example` embeds nothing.
+  assert.equal(slugFor('example.com'), 'example');
+  assert.equal(slugFor('acme-widgets.org'), 'acme-widgets');
 });
 
 test('a two-part public suffix drops both labels', () => {
@@ -45,7 +32,7 @@ test('a two-part public suffix drops both labels', () => {
   assert.equal(slugFor('example.com.au'), 'example');
 });
 
-test('a subdomain is kept - two of ours could differ only by it', () => {
+test('a subdomain is kept - an indexable subdomain is its own site', () => {
   assert.equal(slugFor('shop.example.com'), 'shop-example');
 });
 
@@ -53,18 +40,28 @@ test('a single-label result never comes back empty', () => {
   assert.ok(slugFor('a.com').length > 0);
 });
 
-test('every Cloudflare name derives from one domain, and the repo differs on purpose', () => {
-  assert.deepEqual(resourceNames('autire.com'), {
-    slug: 'autire',
-    repo: 'autire_com',
-    worker: 'webm-autire',
-    d1: 'webm-autire-db',
-    r2Media: 'webm-autire-media',
-    r2App: 'webm-autire-app',
+test('one name, everywhere: repo, Worker, D1, R2 and KV are all the slug', () => {
+  assert.equal(repoName('example.com'), 'example');
+  assert.deepEqual(resourceNames('example.com'), {
+    slug: 'example',
+    repo: 'example',
+    worker: 'example',
+    d1: 'example',
+    r2: 'example',
+    kv: 'example',
   });
 });
 
+test('every name is valid for the strictest resource - lowercase, digits and dashes only', () => {
+  // R2 and Workers accept nothing else, and R2 also refuses a leading or trailing dash.
+  for (const domain of ['example.com', 'shop.example.com', 'acme-widgets.co.uk', 'a1.io']) {
+    for (const name of Object.values(resourceNames(domain))) {
+      assert.match(name, /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/, `${domain} -> ${name}`);
+    }
+  }
+});
+
 test('two clients on the same name under different TLDs collide, which the caller must handle', () => {
-  // clients.slug carries a unique constraint; `webm new` picks the next free form and records it.
-  assert.equal(slugFor('autire.com'), slugFor('autire.org'));
+  // `webm new` says so; the second one gets a name chosen by a person.
+  assert.equal(slugFor('example.com'), slugFor('example.org'));
 });

@@ -68,7 +68,7 @@ test('staging is decided by config OR by a workers.dev hostname, each covering t
   // A cron has no hostname, so config is the only signal it can read; a branch preview of a
   // launched site inherits `production` from main, so the hostname is the only signal there.
   assert.equal(isStagingDeployment('staging', null), true);
-  assert.equal(isStagingDeployment('production', 'x-webm-acme.acct.workers.dev'), true);
+  assert.equal(isStagingDeployment('production', 'x-acme.acct.workers.dev'), true);
   assert.equal(isStagingDeployment('production', 'acme.com'), false);
   assert.equal(isStagingDeployment(undefined, 'www.acme.com'), false, 'a www variant still sends');
   assert.equal(isStagingDeployment('production', 'notworkers.dev'), false, 'label, not substring');

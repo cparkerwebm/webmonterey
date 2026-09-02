@@ -7,6 +7,7 @@ const files = (over = {}) =>
   scaffold({
     domain: 'autire.com',
     client: 'Autire Technologies',
+    org: 'webmonterey',
     packageVersion: '1.0.0',
     today: '2026-08-26',
     ...over,
@@ -14,15 +15,15 @@ const files = (over = {}) =>
 
 const json = (f: Record<string, string>, path: string) => JSON.parse(f[path]!);
 
-test('three names, three jobs: repo, slug, Cloudflare', () => {
+test('one name everywhere: repo, Worker, D1 and R2 are all the slug', () => {
   const f = files();
   const site = json(f, 'webmonterey.json');
-  // Repo carries the full domain with UNDERSCORES; Cloudflare carries the slug, no TLD.
-  assert.equal(site.repo, 'webmonterey/autire_com');
-  assert.equal(site.worker, 'webm-autire');
+  assert.equal(site.repo, 'webmonterey/autire');
+  assert.equal(site.worker, 'autire');
   assert.equal(site.slug, 'autire');
-  assert.match(f['wrangler.jsonc']!, /"name": "webm-autire"/);
-  assert.match(f['README.md']!, /webm-autire-db/);
+  assert.match(f['wrangler.jsonc']!, /"name": "autire"/);
+  assert.match(f['README.md']!, /\| Worker · D1 · R2 \| `autire` \|/);
+  assert.equal(json(f, 'package.json').name, 'autire');
 });
 
 test('MCP is declared AND pre-approved - a declaration alone is inert', () => {
@@ -84,7 +85,7 @@ test('secrets are gitignored and the example names the password-manager habit', 
   assert.match(f['.dev.vars.example']!, /password manager/);
 });
 
-test('an unnamed client gets CHANGEME, which go-live refuses to launch with', () => {
+test('an unnamed client gets CHANGEME, which launch refuses to launch with', () => {
   const site = json(files({ client: undefined }), 'webmonterey.json');
   assert.equal(site.client, 'CHANGEME');
 });
@@ -176,20 +177,26 @@ test('compatibility_date is the date passed in, never a constant baked into the 
    * scaffold.ts, which exists because a date NEWER than the installed runtime does not build at
    * all. Both directions are traps and they pull in opposite ways.
    */
-  const config = scaffold({ domain: 'a.com', packageVersion: '1.0.0', today: '2026-08-26' })[
-    'wrangler.jsonc'
-  ]!;
+  const config = scaffold({
+    domain: 'a.com',
+    org: 'o',
+    packageVersion: '1.0.0',
+    today: '2026-08-26',
+  })['wrangler.jsonc']!;
   assert.match(config, /"compatibility_date":\s*"2026-08-12"/, 'derived from it, a fortnight back');
 
-  const other = scaffold({ domain: 'a.com', packageVersion: '1.0.0', today: '2027-03-04' })[
-    'wrangler.jsonc'
-  ]!;
+  const other = scaffold({
+    domain: 'a.com',
+    org: 'o',
+    packageVersion: '1.0.0',
+    today: '2027-03-04',
+  })['wrangler.jsonc']!;
   assert.match(other, /"compatibility_date":\s*"2027-02-18"/, 'and it still tracks the argument');
 });
 
 test('a malformed date is refused rather than written into wrangler.jsonc', () => {
   assert.throws(
-    () => scaffold({ domain: 'a.com', packageVersion: '1.0.0', today: 'today' }),
+    () => scaffold({ domain: 'a.com', org: 'o', packageVersion: '1.0.0', today: 'today' }),
     /YYYY-MM-DD/,
   );
 });
@@ -205,9 +212,9 @@ test('the scaffolded compatibility_date is never in the future of the installed 
    * machine that just installed. The margin is for every machine that did not.
    */
   const written = (today: string) =>
-    scaffold({ domain: 'a.com', packageVersion: '1.0.0', today })['wrangler.jsonc']!.match(
-      /"compatibility_date":\s*"([\d-]+)"/,
-    )![1]!;
+    scaffold({ domain: 'a.com', org: 'o', packageVersion: '1.0.0', today })[
+      'wrangler.jsonc'
+    ]!.match(/"compatibility_date":\s*"([\d-]+)"/)![1]!;
 
   for (const today of ['2026-08-27', '2026-01-01', '2026-03-01', '2027-12-31']) {
     const gap = (Date.parse(today) - Date.parse(written(today))) / 86_400_000;
@@ -222,9 +229,9 @@ test('the scaffolded compatibility_date is never in the future of the installed 
 test('the margin crosses a month and a year boundary correctly', () => {
   // Naive string arithmetic gets 2026-01-05 minus 14 days wrong; this is why it goes through Date.
   const at = (today: string) =>
-    scaffold({ domain: 'a.com', packageVersion: '1.0.0', today })['wrangler.jsonc']!.match(
-      /"compatibility_date":\s*"([\d-]+)"/,
-    )![1]!;
+    scaffold({ domain: 'a.com', org: 'o', packageVersion: '1.0.0', today })[
+      'wrangler.jsonc'
+    ]!.match(/"compatibility_date":\s*"([\d-]+)"/)![1]!;
   assert.equal(at('2026-01-05'), '2025-12-22');
   assert.equal(at('2026-03-05'), '2026-02-19', 'and February');
 });

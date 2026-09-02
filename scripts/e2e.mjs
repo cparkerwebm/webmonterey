@@ -37,7 +37,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const DOMAIN = 'e2e.example';
-const REPO = 'e2e_example';
+const REPO = 'e2e'; /* the slug: one name everywhere */
 
 const failures = [];
 const check = (name, ok, detail = '') => {
@@ -95,6 +95,7 @@ try {
       'new',
       DOMAIN,
       '--client=E2E Example',
+      '--org=example',
       '--no-install',
     ],
     host,

@@ -35,7 +35,7 @@ Wrangler tracks applied migrations in a `d1_migrations` table inside the databas
 The database must exist and be bound in `wrangler.jsonc`:
 
 ```sh
-npx wrangler d1 create webm-<domain-dashed>-db --update-config
+npx wrangler d1 create <slug> --update-config
 ```
 
 `--update-config` writes the `d1_databases` binding into `wrangler.jsonc` for you.

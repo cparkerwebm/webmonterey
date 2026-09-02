@@ -13,9 +13,9 @@
  * The deciding question is not file size, it is "should `git clone` carry this?" A 40MB
  * showreel makes every clone slower forever and can never be optimised by the build.
  *
- * NAMING (rule 5):
- *   bucket    webm-<domain-dashed>-media     e.g. webm-example-com-media
- *   hostname  media.<client-domain>          e.g. media.example.com
+ * NAMING:
+ *   bucket    <slug>                  e.g. example - one name for every resource, see cli/slug.ts
+ *   hostname  media.<client-domain>   e.g. media.example.com
  *
  * WHY A CUSTOM DOMAIN AND NOT r2.dev: Cloudflare's r2.dev subdomain is rate-limited and
  * documented as unsuitable for production. It is also a hostname the client does not own,

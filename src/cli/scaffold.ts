@@ -13,10 +13,10 @@ import { MCP_NAMES, mcpConfig } from './mcp.ts';
 
 export interface ScaffoldOptions {
   domain: string;
-  /** Display name. Falls back to CHANGEME, which `go-live` refuses to launch with. */
+  /** Display name. Falls back to CHANGEME, which `/webm:launch` refuses to launch with. */
   client?: string;
-  /** GitHub org for the repo. */
-  org?: string;
+  /** GitHub owner for the repo. Required - the package carries no agency default. */
+  org: string;
   /**
    * Where a staging deployment's mail goes. `webm new` fills it from `git config user.email`;
    * the package itself carries no inbox, because a default address in a public package means a
@@ -49,7 +49,7 @@ export function scaffold(options: ScaffoldOptions): Record<string, string> {
   const { domain, packageVersion } = options;
   const n = resourceNames(domain);
   const client = options.client ?? 'CHANGEME';
-  const org = options.org ?? 'webmonterey';
+  const { org } = options;
   const { today } = options;
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
@@ -413,9 +413,10 @@ export function scaffold(options: ScaffoldOptions): Record<string, string> {
     `| \`npx webm doctor\` | the things that fail silently |\n\n` +
     `## Cloudflare\n\n` +
     `| | |\n| --- | --- |\n` +
-    `| Worker | \`${n.worker}\` |\n| D1 | \`${n.d1}\` |\n| R2 media | \`${n.r2Media}\` |\n\n` +
-    `The repo is named for the domain; Cloudflare resources use the slug, with no TLD, so a\n` +
-    `preview hostname never embeds a domain Chrome could mistake for a lookalike.\n\n` +
+    `| Worker · D1 · R2 | \`${n.slug}\` |\n\n` +
+    `One name everywhere: the domain minus its TLD. A preview hostname then never embeds a\n` +
+    `domain Chrome could mistake for a lookalike. A second resource of one kind takes a purpose\n` +
+    `suffix - \`${n.slug}-portal\`.\n\n` +
     `## Deploying\n\n` +
     `Push to deploy. A \`wrangler deploy\` from a laptop creates a version no build produced, so\n` +
     `history stops describing what is live and the next push reverts it.\n`;

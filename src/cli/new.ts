@@ -28,26 +28,33 @@ function parseArgs(argv: string[]) {
   return {
     domain: positional[0],
     client: flag('client'),
-    org: flag('org') ?? 'webmonterey',
-    stagingEmail: flag('staging-email'),
+    org: flag('org') ?? gitConfig('webm.org'),
+    stagingEmail:
+      flag('staging-email') ?? gitConfig('webm.stagingEmail') ?? gitConfig('user.email'),
     into: flag('into'),
     install: !argv.includes('--no-install'),
   };
 }
 
 /*
- * WHERE A STAGING SITE'S MAIL GOES, defaulting to whoever is scaffolding it.
+ * WHO IS SCAFFOLDING, read from the machine rather than baked into the package.
  *
- * The package carries no inbox of its own: a default address baked into a public package means
- * a stranger's staging site mails the package author. `git config user.email` is the person at
- * the keyboard, which is the right default for a site they are about to test. The flag overrides
- * it; doctor fails a staging site that ends up with none.
+ * A public package carries no agency defaults: not a GitHub org, not an inbox. A default org
+ * would only ever be wrong for anyone else, and a default address means a stranger's staging site
+ * mails the package author. So both come from git config, set once per machine -
+ *
+ *     git config --global webm.org webmonterey
+ *     git config --global webm.stagingEmail dev@example.com     # optional; user.email otherwise
+ *
+ * - and a flag overrides either for one run. `webm doctor` fails a staging site that ends up
+ * with no address.
  */
-function gitUserEmail(): string {
+function gitConfig(key: string): string | undefined {
   try {
-    return execFileSync('git', ['config', 'user.email'], { encoding: 'utf8' }).trim();
+    const value = execFileSync('git', ['config', key], { encoding: 'utf8' }).trim();
+    return value || undefined;
   } catch {
-    return '';
+    return undefined;
   }
 }
 
@@ -56,9 +63,17 @@ export function run(argv: string[]): number {
 
   if (!args.domain) {
     console.error(
-      'webm new <domain> [--client="Name"] [--org=webmonterey] [--staging-email=you@example.com] [--into=path] [--no-install]',
+      'webm new <domain> [--client="Name"] [--org=<github-owner>] [--staging-email=you@example.com] [--into=path] [--no-install]',
     );
-    console.error('\n  webm new autire.com --client="Autire Technologies"');
+    console.error('\n  webm new example.com --client="Example Co"');
+    return 1;
+  }
+
+  if (!args.org) {
+    console.error(
+      'webm new: no GitHub owner for the repo. Either pass --org=<owner> or set it once:\n\n' +
+        '  git config --global webm.org <owner>\n',
+    );
     return 1;
   }
 
@@ -86,7 +101,7 @@ export function run(argv: string[]): number {
     domain,
     client: args.client,
     org: args.org,
-    stagingEmail: args.stagingEmail ?? gitUserEmail(),
+    stagingEmail: args.stagingEmail,
     packageVersion: packageVersion(),
     /* Real today, not a constant - see ScaffoldOptions.today for what a stale one does. */
     today: new Date().toISOString().slice(0, 10),
@@ -114,12 +129,14 @@ export function run(argv: string[]): number {
   console.log(`Scaffolded ${Object.keys(files).length} files into ${root}`);
   console.log(`  + ${seeded.length} seeded (favicons, headers, CLAUDE.md, a contact form)`);
   console.log(`  + ${kept.length} .gitkeep, so the empty directories survive a clone\n`);
-  console.log(`  repo     ${args.org}/${names.repo}      (keeps the domain)`);
+  console.log(`  repo               ${args.org}/${names.repo}`);
   console.log(
-    `  worker   ${names.worker}                (slug - no TLD, so Chrome does not flag previews)`,
+    `  worker · d1 · r2   ${names.slug}   (the domain minus its TLD, so Chrome does not flag previews)`,
   );
-  console.log(`  d1       ${names.d1}`);
-  console.log(`  r2       ${names.r2Media}`);
+  console.log(
+    `\n  One name everywhere. If ${names.slug} is already taken in the account - ${domain.replace(/^[^.]+/, names.slug)}` +
+      ` and another TLD both want it - pick another with --into and edit webmonterey.json.`,
+  );
 
   try {
     execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: root });

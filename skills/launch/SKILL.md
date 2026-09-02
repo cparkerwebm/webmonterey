@@ -124,8 +124,8 @@ Public values - the Turnstile site key, a GTM container id - are not secrets. Th
 ## 7. D1, if the site uses it
 
 ```sh
-npx wrangler d1 migrations list webm-<slug>-db --remote
-npx wrangler d1 migrations apply webm-<slug>-db --remote
+npx wrangler d1 migrations list <slug> --remote
+npx wrangler d1 migrations apply <slug> --remote
 ```
 
 `--remote` is the step people forget. Local migrations do nothing in production, and local and

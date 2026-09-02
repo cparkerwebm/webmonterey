@@ -3,7 +3,7 @@
   "client": "Minimal Example",
   "domain": "minimal.example.com",
   "repo": "cparkerwebm/webmonterey",
-  "worker": "webm-minimal-example",
+  "worker": "minimal-example",
   "launched": null,
   "timeZone": "America/Los_Angeles",
   "locale": "en-US",

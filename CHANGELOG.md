@@ -11,6 +11,34 @@ build. See `/webm:upgrade`.
 
 ---
 
+## 1.1.0 — 2026-09-02
+
+### Changed
+
+- **One name, everywhere.** `webm new` now derives a single name from the domain — `example.com`
+  becomes `example` — and uses it for the GitHub repo, the Worker, the D1 database, the R2 bucket
+  and any KV namespace. The `webm-` prefix and the `-db` / `-media` suffixes are gone from cloud
+  resources: Cloudflare scopes every one of those names to the account, so in an account that holds
+  nothing but client sites a prefix said nothing, and one-of-each needs no suffix. The TLD is still
+  dropped, for the same reason as before — it keeps a domain out of preview hostnames, which is
+  what trips Chrome's lookalike warning.
+
+  **Existing sites are untouched.** Every name is read from the site's own `webmonterey.json` and
+  `wrangler.jsonc`; nothing renames a resource that exists. A rebuild onto the new convention is a
+  new repo and new resources beside the old, tested in full, then a domain cutover — which is the
+  clean way to do it anyway.
+
+- **No agency defaults left in the package.** `webm new` reads the GitHub owner from
+  `git config webm.org` and the staging inbox from `git config webm.stagingEmail` (falling back
+  to `user.email`); `--org` and `--staging-email` override for one run. Without an owner it refuses
+  and says how to set one. Set it once per machine:
+
+  ```sh
+  git config --global webm.org <your-github-owner>
+  ```
+
+---
+
 ## 1.0.0 — 2026-09-02
 
 The first public release, on npmjs. This is the framework as it stands after two private

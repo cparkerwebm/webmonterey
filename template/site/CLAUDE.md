@@ -103,8 +103,12 @@ Private data — user logins, form submissions — goes to **Cloudflare D1**, ne
 
 ### 5. The prefix is `webm-`, never `wm-`
 
-Custom properties (`--webm-action`), class names (`.webm-section`), Cloudflare resource names
-(`webm-<slug>`), the CLI, the skills namespace. No exceptions.
+Custom properties (`--webm-action`), class names (`.webm-section`), the CLI, the skills
+namespace. No exceptions.
+
+Cloud resources are the other convention: the GitHub repo, Worker, D1, R2 and KV all carry **one
+name**, the domain minus its TLD (`example.com` → `example`). A second resource of one kind takes
+a purpose suffix (`example-portal`).
 
 ### 6. Cloudflare bindings come from `cloudflare:workers`
 

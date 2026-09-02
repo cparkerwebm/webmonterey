@@ -51,7 +51,7 @@ import { PACKAGE_ROOT, packageVersion } from './package-root.ts';
 
 /**
  * The namespace. Rule 5's prefix: the CLI is `webm`, the tokens are --webm-*, the classes are
- * .webm-*, the Workers are webm-<slug>. `/webm:launch` rather than `/webmonterey:launch`.
+ * .webm-*, the cloud resources carry one name each - the domain minus its TLD. `/webm:launch` rather than `/webmonterey:launch`.
  */
 const NAMESPACE = 'webm';
 

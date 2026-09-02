@@ -13,7 +13,7 @@ domain on a bucket requires the zone to be on the same account as the bucket, so
 earlier fails for the same reason `preview.<client-domain>` does.
 
 ```sh
-npx wrangler r2 bucket create webm-<domain-dashed>-media
+npx wrangler r2 bucket create <slug>        # the domain minus its TLD, same as the Worker and D1
 ```
 
 Then in the dashboard: **R2 → the bucket → Settings → Custom Domains → Connect Domain**, and
@@ -49,8 +49,8 @@ no_check_bucket = true
 every transfer fails with an error naming an operation you never asked for.
 
 ```sh
-rclone copy ./uploads webm-media:webm-<domain-dashed>-media --transfers 2 --progress
-rclone check ./uploads webm-media:webm-<domain-dashed>-media
+rclone copy ./uploads webm-media:<slug> --transfers 2 --progress
+rclone check ./uploads webm-media:<slug>
 ```
 
 Two things learned the hard way:
