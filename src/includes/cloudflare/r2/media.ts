@@ -5,7 +5,7 @@
  *
  *   src/assets/    images the DESIGN uses — imported, hashed, optimised at build by sharp.
  *                  A logo, an icon, a hero shot. These belong in the repo.
- *   public/        small fixed files that need a stable URL (favicons, open-graph.png).
+ *   public/        small fixed files that need a stable URL (favicons, opengraph.png).
  *   R2 (here)      everything too large or too numerous to sit in git: video, audio, PDFs,
  *                  photo galleries, downloads, anything migrated wholesale off a WordPress
  *                  uploads folder.

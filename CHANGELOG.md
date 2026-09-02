@@ -34,6 +34,12 @@ build. See `/webm:upgrade`.
 
 ### Changed
 
+- **The default share image is `public/opengraph.png`** (was `open-graph.png`). `webm new` seeds
+  the WebMonterey artwork there - the same image the `/webmaster` page uses - and a client replaces
+  it with their own; `webm doctor` flags the seed until they do. **On an existing site:** rename
+  `public/open-graph.png` to `public/opengraph.png`, or every page's `og:image` points at a file
+  that is not there.
+
 - **The footer credit is an internal link.** `Powered by WebMonterey` now goes to the site's own
   `/webmaster` page instead of leaving the site; that page carries the one outbound link, with
   the UTM parameters (`utm_campaign=webmaster`). The email footer keeps the outbound link — an

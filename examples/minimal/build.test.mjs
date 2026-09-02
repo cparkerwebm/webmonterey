@@ -147,6 +147,7 @@ test('the webmaster page declares its own share image and structured data', () =
     /property="og:image" content="https:\/\/minimal\.example\.com\/webmaster\/og\.png"/,
   );
   assert.match(page, /og:image:width" content="1200"/);
+  assert.match(page, /og:image:height" content="630"/);
   assert.ok(
     existsSync(join(DIST, 'webmaster/og.png')),
     'the share image is served from the package',

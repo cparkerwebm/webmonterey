@@ -28,14 +28,14 @@ declare module 'virtual:webm/icons' {
 /** The client's own stylesheet - src/styles/custom/. Side-effect import only. */
 declare module 'virtual:webm/custom';
 
-/** The webmaster page's share image, base64, read from the package by the integration. */
+/** The webmaster page's share image - bytes as base64 and its measured size - from the package. */
 declare module 'virtual:webm/webmaster-og' {
-  const base64: string;
-  export default base64;
+  const image: { base64: string; width: number | null; height: number | null };
+  export default image;
 }
 
 /**
- * The real pixel size of `public/open-graph.png`, measured at build time, or null when there is
+ * The real pixel size of `public/opengraph.png`, measured at build time, or null when there is
  * no readable file there. Nothing else can check it: public/ is copied verbatim.
  */
 declare module 'virtual:webm/share-image' {

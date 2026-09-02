@@ -86,17 +86,24 @@ test('every directory the code reads out of the package is published', () => {
   }
 });
 
-test('the webmaster share image is the size the page declares for it', async () => {
+test('the webmaster share image is a share-card shape, and is what the seed ships too', async () => {
   /*
-   * The page hardcodes 1200x630 in og:image:width/height because measuring inside a page's
-   * frontmatter would need node:fs in an Astro module. A crawler lays the card out from those
-   * numbers before it fetches the image, so they have to be true - this is where that is held.
+   * og:image:width/height on the webmaster page are MEASURED from this file by the integration,
+   * so any size works - but a crawler crops to roughly 1.91:1 and wants at least 1200 wide, and
+   * an image outside that gets letterboxed or rejected. The same artwork is the default share
+   * image a client site starts with, so the two must not drift apart.
    */
   const { imageSize } = await import('./integration/image-size.ts');
-  assert.deepEqual(imageSize(join(ROOT, 'src/assets/webmaster-og.png')), {
-    width: 1200,
-    height: 630,
-  });
+  const size = imageSize(join(ROOT, 'src/assets/opengraph-webmaster.png'));
+  assert.ok(size, 'src/assets/opengraph-webmaster.png is not a readable PNG/JPEG/GIF');
+  assert.ok(size.width >= 1200, `at least 1200 wide, got ${size.width}`);
+  const ratio = size.width / size.height;
+  assert.ok(Math.abs(ratio - 1.91) < 0.03, `share cards are ~1.91:1, got ${ratio.toFixed(2)}`);
+  assert.equal(
+    readFileSync(join(ROOT, 'src/assets/opengraph-webmaster.png'), 'base64'),
+    readFileSync(join(ROOT, 'template/public/opengraph.png'), 'base64'),
+    'the seed share image and the webmaster image are the same artwork',
+  );
 });
 
 test('the package does not depend on itself', () => {

@@ -96,7 +96,7 @@ interface Props {
    */
   noindex?: boolean;
   /**
-   * The social share image, as a path under `public/`. Defaults to `/open-graph.png`.
+   * The social share image, as a path under `public/`. Defaults to `/opengraph.png`.
    *
    * MUST be a public/ path, never an imported asset run through `getImage`. On a prerendered
    * route `getImage` returns a built `/_astro/…` file, but on a `prerender = false` route
@@ -109,7 +109,7 @@ interface Props {
   /*
    * Dimensions of `shareImage`, in pixels. THEY MUST TRAVEL WITH IT.
    *
-   * These default to the size of the shipped `public/open-graph.png`. Files in public/ are
+   * These default to the size of the shipped `public/opengraph.png`. Files in public/ are
    * copied verbatim and never processed, so nothing can measure the real image at build time
    * and nothing will warn when these stop matching — a client dropping in a differently sized
    * card image silently publishes false dimensions. Found exactly that way: a live site
@@ -165,9 +165,9 @@ const {
   description,
   brandTitle = brandTitles,
   noindex = false,
-  shareImage = '/open-graph.png',
+  shareImage = '/opengraph.png',
   /*
-   * MEASURED, not assumed. Both default to the real size of public/open-graph.png, read from the
+   * MEASURED, not assumed. Both default to the real size of public/opengraph.png, read from the
    * file's own header at build time - so replacing the card art cannot leave the tags describing
    * the old one, which is what happened on every generation-2 site.
    *

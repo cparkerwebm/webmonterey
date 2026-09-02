@@ -405,7 +405,7 @@ test("a placeholder favicon still in public/ fails - it is the agency's mark on 
    */
   const ctx = base({
     site: { client: 'Acme', domain: 'acme.com', launched: '2026-03-01' },
-    placeholders: ['public/favicon.svg', 'public/open-graph.png'],
+    placeholders: ['public/favicon.svg', 'public/opengraph.png'],
   });
   const result = runCheck('placeholder-branding', ctx);
   assert.equal(result.status, 'fail', 'a LAUNCHED site shipping the agency mark is a fault');

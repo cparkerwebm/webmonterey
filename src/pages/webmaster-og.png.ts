@@ -12,15 +12,16 @@
  * relative `new URL()` throws at prerender. The integration reads the file in Node and inlines
  * it. See integration/index.ts.
  *
- * The page declares 1200x630 for it and a package test asserts the asset really is that size.
+ * The page reads the image's measured size from the same module, so og:image:width and height
+ * are always the file's own.
  */
 import type { APIRoute } from 'astro';
-import base64 from 'virtual:webm/webmaster-og';
+import image from 'virtual:webm/webmaster-og';
 
 export const prerender = true;
 
 export const GET: APIRoute = () => {
-  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  const bytes = Uint8Array.from(atob(image.base64), (c) => c.charCodeAt(0));
   return new Response(bytes, {
     headers: {
       'Content-Type': 'image/png',

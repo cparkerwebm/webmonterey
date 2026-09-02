@@ -19,7 +19,8 @@
  * nodes claiming the same `@id` is worse than one.
  *
  * The share image is served from the package at /webmaster/og.png, so a redesign reaches every
- * site on `npm update` and nothing has to be seeded into public/.
+ * site on `npm update` and nothing has to be seeded into public/. Its og:image dimensions are
+ * measured from the file by the integration, never typed in.
  */
 import Base from '../layouts/base.astro';
 import { copy } from '../includes/webmonterey/copy.ts';
@@ -31,6 +32,7 @@ import {
 import { domain, hasDomain } from '../includes/webmonterey/site.ts';
 import { compact, renderJsonLd } from '../includes/webmonterey/structured-data/nodes.ts';
 import { pageHeader } from 'virtual:webm/registry';
+import ogImage from 'virtual:webm/webmaster-og';
 
 const PageHeader = pageHeader;
 const text = copy.webmaster;
@@ -71,8 +73,8 @@ if (Astro.site) {
   title={text.title}
   description={text.description}
   shareImage={WEBMASTER_OG_PATH}
-  shareImageWidth={1200}
-  shareImageHeight={630}
+  shareImageWidth={ogImage.width}
+  shareImageHeight={ogImage.height}
   structuredData={false}
 >
   <Fragment slot="head">

@@ -97,7 +97,7 @@ const VIRTUAL = {
  * "Invalid URL string" at prerender. This integration runs in Node at config time, where the
  * path is real; the bytes travel to the endpoint as base64 through a virtual module.
  */
-const WEBMASTER_OG = fileURLToPath(new URL('../assets/webmaster-og.png', import.meta.url));
+const WEBMASTER_OG = fileURLToPath(new URL('../assets/opengraph-webmaster.png', import.meta.url));
 
 /** Vite resolves virtual ids to a `\0`-prefixed form so other plugins leave them alone. */
 const resolved = (id: string) => `\0${id}`;
@@ -254,7 +254,7 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
                        * both tags - the scrapers all measure the image themselves anyway, so
                        * saying nothing beats saying something wrong.
                        */
-                      const size = imageSize(join(root, 'public/open-graph.png'));
+                      const size = imageSize(join(root, 'public/opengraph.png'));
                       return `export default ${JSON.stringify(size)};`;
                     }
                     case resolved(VIRTUAL.icons): {
@@ -303,7 +303,11 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
                     case resolved(VIRTUAL.forms):
                       return `export const FORMS = ${JSON.stringify(loadForms(root))};`;
                     case resolved(VIRTUAL.webmasterOg):
-                      return `export default ${JSON.stringify(readFileSync(WEBMASTER_OG, 'base64'))};`;
+                      /* Bytes and the REAL size, so the page never declares dimensions the file does not have. */
+                      return `export default ${JSON.stringify({
+                        base64: readFileSync(WEBMASTER_OG, 'base64'),
+                        ...(imageSize(WEBMASTER_OG) ?? { width: null, height: null }),
+                      })};`;
                     case resolved(VIRTUAL.registry):
                       /*
                        * Re-exported from the client repo, because every visible component lives
