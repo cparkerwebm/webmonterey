@@ -16,8 +16,8 @@ jobs:
         # Builds runs.
         node: ['22.18', '24']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
         with: { node-version: '${{ matrix.node }}' }
       # `prepare` builds dist/ on npm ci - package.test.ts asserts the published shape, and
       # bin and files both point into dist/, so an unbuilt tree fails two real checks.
@@ -29,8 +29,8 @@ jobs:
     name: astro (supported)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
         with: { node-version: '24' }
       - run: npm ci
 
@@ -65,8 +65,8 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
         with: { node-version: '24' }
 
       - name: Is a higher major in prerelease?
