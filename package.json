@@ -1,6 +1,6 @@
 {
   "name": "@cparkerwebm/webmonterey",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "The WebMonterey Astro framework: plumbing, design system, and Claude Code skills for client sites on Cloudflare Workers",
   "license": "MIT",
