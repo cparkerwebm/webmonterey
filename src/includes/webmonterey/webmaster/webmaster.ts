@@ -47,6 +47,8 @@ export const AGENCY = {
     'A webmaster maintenance service in Monterey, California: design, build, hosting, security and ongoing care for small-business websites.',
   address: { addressLocality: 'Monterey', addressRegion: 'CA', addressCountry: 'US' },
   sameAs: [
+    /* The Google Business Profile, by its Knowledge Graph id - the stable form of the share link. */
+    'https://www.google.com/search?kgmid=/g/11nvks0plt',
     'https://www.linkedin.com/company/webmonterey',
     'https://www.facebook.com/webmonterey',
     'https://www.youtube.com/@webmonterey',
