@@ -1,0 +1,15 @@
+---
+/*
+ * An on-demand route, so the build exercises the server path and the Actions endpoint.
+ *
+ * Every route with `prerender = false` must ALSO appear in wrangler.jsonc's run_worker_first, in
+ * both slash forms - `webm doctor` checks. Without it this returns 200 to curl and a 404 page to
+ * Chrome.
+ */
+export const prerender = false;
+import Base from '@cparkerwebm/webmonterey/layouts/base.astro';
+---
+
+<Base title="Contact" noindex>
+  <p>Exists so CI builds the server path.</p>
+</Base>

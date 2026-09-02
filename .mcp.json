@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "astro-docs": {
+      "type": "http",
+      "url": "https://mcp.docs.astro.build/mcp"
+    },
+    "mdn": {
+      "type": "http",
+      "url": "https://mcp.mdn.mozilla.net/"
+    },
+    "website-spec": {
+      "type": "http",
+      "url": "https://mcp.specification.website/mcp"
+    },
+    "email-spec": {
+      "type": "http",
+      "url": "https://mcp.specification.email/mcp"
+    }
+  }
+}

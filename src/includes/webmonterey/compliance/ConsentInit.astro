@@ -1,0 +1,74 @@
+---
+/*
+ * Consent bootstrap. MUST be the first thing in <head>, ABOVE <TagManager />.
+ *
+ *   <head>
+ *     <ConsentInit />
+ *     <TagManager id={gtmId} />
+ *   </head>
+ *
+ * Everything here runs synchronously and inline, before any third party loads, because:
+ *
+ *   1. Google Consent Mode requires the `default` call to precede the GTM snippet. Arriving
+ *      late means tags have already fired under the wrong assumption.
+ *   2. `data-webm-consent` has to exist before any feature script reads it, or features race
+ *      the banner.
+ *
+ * It is deliberately dependency-free and unbundled (`is:inline`) — a module import would be
+ * deferred, which defeats both points above.
+ *
+ * DISABLING: set features.compliance = false in webmonterey.json. This component then renders
+ * NOTHING: no attribute, no Consent Mode defaults, no banner. Features gated with
+ * `hasConsent()` / `whenConsented()` see everything granted and simply run. See consent.ts.
+ */
+import { features } from '../site.ts';
+
+interface Props {
+  /**
+   * Categories granted before the visitor chooses anything.
+   *
+   * Defaults to all of them — an opt-out model, lawful under CCPA/CPRA for US audiences.
+   * Pass `[]` for an opt-in model if a client takes EU/UK traffic, where GDPR requires
+   * non-essential categories to start off.
+   */
+  defaults?: Array<'functional' | 'analytics' | 'marketing'>;
+}
+
+const { defaults = ['functional', 'analytics', 'marketing'] } = Astro.props;
+
+const enabled = features.compliance !== false;
+const defaultsJson = JSON.stringify(defaults);
+---
+
+{
+  enabled && (
+    <script
+      is:inline
+      set:html={`(function(){
+  var d=document.documentElement,DEF=${defaultsJson};
+  var m=document.cookie.match(/(?:^|;\\s*)webm_consent=([^;]*)/);
+  var stored=m?decodeURIComponent(m[1]):null,granted,pending=false;
+  var gpc=navigator.globalPrivacyControl===true;
+  if(stored!==null){granted=stored.split(',').filter(Boolean);}
+  else if(gpc){granted=['functional'];d.dataset.webmConsentGpc='1';}
+  else{granted=DEF.slice();pending=true;}
+  d.dataset.webmConsent=granted.join(',');
+  if(pending)d.dataset.webmConsentPending='1';
+  var has=function(c){return granted.indexOf(c)>-1;};
+  var g=function(v){return v?'granted':'denied';};
+  window.dataLayer=window.dataLayer||[];
+  function gtag(){dataLayer.push(arguments);}
+  window.gtag=window.gtag||gtag;
+  gtag('consent','default',{
+    ad_storage:g(has('marketing')),
+    ad_user_data:g(has('marketing')),
+    ad_personalization:g(has('marketing')),
+    analytics_storage:g(has('analytics')),
+    functionality_storage:g(has('functional')),
+    personalization_storage:g(has('functional')),
+    security_storage:'granted'
+  });
+})();`}
+    />
+  )
+}

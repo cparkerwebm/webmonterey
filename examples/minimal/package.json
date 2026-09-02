@@ -1,0 +1,21 @@
+{
+  "name": "webm-minimal-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "postinstall": "webm sync",
+    "dev": "astro dev",
+    "build": "astro check && astro build",
+    "preview": "astro preview",
+    "test:build": "astro build && node --test build.test.mjs",
+    "test:runtime": "astro build && node --test runtime.test.mjs"
+  },
+  "dependencies": {
+    "@cparkerwebm/webmonterey": "file:../..",
+    "astro": "^7.1.6"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "typescript": "^6.0.3"
+  }
+}

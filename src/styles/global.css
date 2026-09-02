@@ -1,0 +1,47 @@
+/*
+ * The package's stylesheet. Everything package-owned, in cascade order.
+ *
+ * LAYER ORDER. Later layers win.
+ *
+ *   webm.reset       browser normalization
+ *   webm.tokens      custom properties - COMPILED FROM design.json, see below
+ *   webm.base        element defaults, a11y primitives
+ *   webm.layout      section/container/grid primitives
+ *   webm.components  .core then .custom  <- the client override seam
+ *   webm.utilities   single-purpose helpers
+ *   webm.overrides   per-client escape hatch, highest priority
+ *
+ * THE BARE @layer STATEMENT BELOW DOES NOT SURVIVE THE BUILD. Verified in generation 2: it is
+ * absent from dist/client/_astro/*.css. Wrapping each file in `@layer name { ... }` preserves
+ * each layer's MEMBERSHIP but says nothing about the ORDER of the layers - and order is the
+ * entire point. With the statement gone, order falls back to first appearance in whatever the
+ * bundler emitted. A component's scoped style landing ahead of this file was enough to put
+ * webm.components.core before webm.reset, at which point `img { max-inline-size: 100% }` beat a
+ * component's `max-inline-size: 11.25rem` and rendered a 180px logo at 883px.
+ *
+ * Correctness therefore comes from base.astro, which emits this same statement as an inline
+ * <style is:inline> ahead of every stylesheet, where nothing can bundle it away.
+ *
+ * >> THE TWO LISTS MUST MATCH. Change this one and you must change base.astro's. <<
+ * webm doctor checks that they do.
+ *
+ * WHAT CHANGED FROM GENERATION 2: tokens.css is gone. The token layer is compiled from the
+ * client's design.json into a virtual module, which base.astro imports. There is no tokens.css
+ * to @import here and nothing to edit by hand - `webm design:extract` migrates an existing one.
+ *
+ * custom/_index.css is also absent, because it lives in the CLIENT repo and a package cannot
+ * reach it. The client's own src/styles/index.css imports this file and then theirs, which is
+ * what keeps webm.components.custom beating webm.components.core without !important.
+ *
+ * An EMPTY @layer block is dropped by the minifier, which is why webm.components.custom and
+ * webm.overrides are absent from built CSS until a client writes a rule.
+ */
+
+@layer webm.reset, webm.tokens, webm.base, webm.layout, webm.components.core,
+  webm.components.custom, webm.utilities, webm.overrides;
+
+@import url('./reset.css');
+@import url('./base.css');
+@import url('./layout.css');
+@import url('./utilities.css');
+@import url('../includes/webmonterey/animations/animations.css');

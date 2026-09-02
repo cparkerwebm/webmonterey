@@ -1,0 +1,33 @@
+---
+import { copy } from '../includes/webmonterey/copy.ts';
+/*
+ * Served by Cloudflare for any path that matches no asset, via
+ * `"not_found_handling": "404-page"` in wrangler.jsonc.
+ *
+ * Deliberately not driven by page JSON - it must still render if the content layer is broken.
+ *
+ * NOINDEX, AND THAT IS NOT COSMETIC. Without it the layout emits a canonical tag pointing at
+ * /404/, which tells a crawler this error page is the preferred version of itself and invites it
+ * into the index. `noindex` suppresses the canonical and the Open Graph URL together, so the page
+ * sends one unambiguous signal instead of "do not index me" alongside "here is my address".
+ *
+ * The description is generic on purpose: the package cannot name a client's own sections, and a
+ * site wanting a better one overrides this route the ordinary Astro way, with src/pages/404.astro.
+ */
+import Base from '../layouts/base.astro';
+---
+
+<Base title={copy.notFound.title} description={copy.notFound.body} noindex>
+  {
+    /* The 404 carries the site's chrome too - a bare 404 is how a visitor decides the site is broken. */
+  }
+  <section class="webm-section" data-space="lg">
+    <div class="webm-container" data-width="text">
+      <div class="webm-stack">
+        <h1>{copy.notFound.title}</h1>
+        <p>That page doesn’t exist, or it has moved.</p>
+        <p><a href="/">Back to the home page</a></p>
+      </div>
+    </div>
+  </section>
+</Base>

@@ -1,0 +1,135 @@
+/*
+ * webm.reset — minimal, hand-rolled.
+ *
+ * Deliberately does NOT blanket `list-style: none`. That strips list semantics in
+ * Safari/VoiceOver; use the .webm-list-bare utility (which pairs with role="list") instead.
+ */
+
+@layer webm.reset {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  * {
+    margin: 0;
+  }
+
+  /*
+   * Put back what the rule above takes away.
+   *
+   * A modal <dialog> is centred by the UA stylesheet using `margin: auto`. The blanket
+   * `margin: 0` wipes that out, and the dialog silently pins itself to the top-left corner
+   * of the viewport. Every reset built on `* { margin: 0 }` has this bug; it only shows up
+   * the first time someone opens a modal.
+   *
+   * DO NOT DELETE. This has already been removed by accident once, while editing the rule
+   * beside it — the comment survived the edit and the rule did not, so the file still read
+   * as though the fix were present. Every modal on the site pinned to the top-left corner.
+   */
+  dialog {
+    margin: auto;
+  }
+
+  /*
+   * Make the `hidden` attribute actually hide things.
+   *
+   * The UA stylesheet's `[hidden] { display: none }` sits in the UA origin, so ANY author
+   * `display` beats it — no specificity contest required. An element styled
+   * `display: inline-flex`, or a grid/flex child, simply ignores the attribute, and
+   * `el.hidden = true` appears to do nothing at all. There is no error and no warning.
+   *
+   * `!important` is load-bearing, not belt-and-braces. webm.reset is the FIRST layer, so a
+   * plain declaration here loses to any component rule on layer order alone, whatever its
+   * specificity. For !important declarations that order is inverted — the earliest layer
+   * wins — so !important in the reset is the only construction that reaches.
+   *
+   * This replaced three hand-written copies of the same rule (two in CookieConsent, one in
+   * ScrollTop). A component needing to re-fix this is the signal that it belongs here.
+   */
+  [hidden] {
+    display: none !important;
+  }
+
+  html {
+    /* No px font-size on html — it defeats user zoom. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    tab-size: 4;
+  }
+
+  body {
+    min-block-size: 100svb;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  img,
+  picture,
+  video,
+  canvas,
+  svg {
+    display: block;
+    max-inline-size: 100%;
+    block-size: auto;
+  }
+
+  img,
+  video {
+    /* Reserve space from intrinsic dimensions to avoid layout shift. */
+    height: auto;
+  }
+
+  input,
+  button,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+
+  button {
+    cursor: pointer;
+    background: none;
+    border: none;
+  }
+
+  p,
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    overflow-wrap: break-word;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    /* Inherit by default; the type scale in webm.base sets real sizes. */
+    font-size: inherit;
+    font-weight: inherit;
+    text-wrap: balance;
+  }
+
+  a {
+    color: inherit;
+    text-decoration-thickness: max(0.08em, 1px);
+    text-underline-offset: 0.15em;
+  }
+
+  table {
+    border-collapse: collapse;
+    inline-size: 100%;
+  }
+
+  /* Anything scrolled to by anchor gets clearance from the top of the viewport. */
+  :target {
+    scroll-margin-block-start: 5ex;
+  }
+}

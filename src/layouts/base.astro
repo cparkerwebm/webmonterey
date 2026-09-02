@@ -1,0 +1,402 @@
+---
+/*
+ * The page shell. Every route renders through this.
+ *
+ * global.css is imported HERE and nowhere else — it is the single stylesheet entry point,
+ * and it pulls in the whole layer system in the correct order.
+ *
+ * Slots:
+ *   head    extra <head> content (analytics, structured data, a preload)
+ *   header  the site header region, once one exists
+ *   default page content
+ *   footer  the site footer region, once one exists
+ */
+import '../styles/global.css';
+/*
+ * The token layer, compiled from the client's design.json. There is no tokens.css to import -
+ * `webm design:extract` migrates an existing one, and the integration resolves this module.
+ */
+import 'virtual:webm/tokens.css';
+
+/*
+ * The client's own CSS - src/styles/custom/_index.css in their repo - which the package cannot
+ * reach by a relative path. LAST, so webm.components.custom and webm.overrides are written after
+ * the layers they override; the @layer statement decides the cascade either way, but a reader
+ * opening the built CSS should find the override at the bottom where they expect it.
+ */
+import 'virtual:webm/custom';
+import { LAYER_STATEMENT } from '../styles/layers.ts';
+import {
+  displayName,
+  shortName,
+  brandTitles,
+  gtmId as siteGtmId,
+} from '../includes/webmonterey/site.ts';
+import { header, footer, panels, structuredData } from 'virtual:webm/registry';
+import measuredShareImage from 'virtual:webm/share-image';
+import icons from 'virtual:webm/icons';
+
+/*
+ * Site-wide plumbing, wired in once here rather than per page.
+ *
+ * ORDER IS LOAD-BEARING: ConsentInit must be the first thing in <head>, above TagManager,
+ * so Consent Mode defaults are set before GTM loads. See the compliance includes.
+ *
+ * Each piece switches itself off: ConsentInit/CookieConsent render nothing when
+ * features.compliance is false, and TagManager renders nothing without a container ID.
+ */
+import ConsentInit from '../includes/webmonterey/compliance/ConsentInit.astro';
+import CookieConsent from '../includes/webmonterey/compliance/CookieConsent.astro';
+import TagManager from '../includes/google/tag-manager/TagManager.astro';
+import ScrollTop from '../includes/webmonterey/scroll-top/ScrollTop.astro';
+
+/*
+ * THE ENVIRONMENT WINS, webmonterey.json IS THE FALLBACK - and the fallback is the one that
+ * matters in production.
+ *
+ * `.env` is gitignored, so it does not exist on Workers Builds. A site that set its container id
+ * only in the environment therefore fired tags perfectly on a laptop and loaded nothing at all
+ * once deployed - no error, no broken page, just an analytics property that never received a
+ * hit. Reading webmonterey.json second means the id travels with the repo, which is safe because
+ * the id is public by design: it is in the source of every page it renders.
+ *
+ * The environment still takes precedence, so a branch can be pointed at a different container
+ * without editing tracked config.
+ */
+const gtmId = import.meta.env.PUBLIC_GTM_ID || siteGtmId;
+
+interface Props {
+  title: string;
+  description?: string;
+  /**
+   * Append ` | <shortName>` to the title. Default true.
+   *
+   * Set FALSE on a route that composes its own full title. A programme page titled "Bird Walks
+   * at the Marina Library" already names the client, and branding it again produces "Bird Walks
+   * at the Marina Library | FoML" - longer than a search result will show, with the page name
+   * truncated away to make room for a brand that was already in it.
+   *
+   * The automatic guard only catches a title that contains the SHORT name verbatim, which this
+   * one does not, so it has to be a decision the route can make.
+   *
+   * Defaults to `brandTitles` in webmonterey.json, so a site whose pages all author their own
+   * full titles sets it once rather than per route.
+   */
+  brandTitle?: boolean;
+  /**
+   * Keep this page out of search results.
+   *
+   * Emits `noindex, nofollow` and suppresses the canonical tag and Open Graph URL, so the
+   * page sends one unambiguous signal instead of "don't index me" alongside "here is my
+   * canonical address".
+   *
+   * A page marked this way must ALSO be excluded from the sitemap — see the `filter` in
+   * astro.config.mjs. Listing a noindex page in a sitemap is a contradiction search engines
+   * report as an error.
+   */
+  noindex?: boolean;
+  /**
+   * The social share image, as a path under `public/`. Defaults to `/open-graph.png`.
+   *
+   * MUST be a public/ path, never an imported asset run through `getImage`. On a prerendered
+   * route `getImage` returns a built `/_astro/…` file, but on a `prerender = false` route
+   * there is no build step to optimise into, so it returns the image SERVICE URL instead —
+   * `/_image?href=…`. With `imageService: 'compile'` (see astro.config.mjs) that endpoint is
+   * never deployed, so the card image 404s in production while every prerendered page looks
+   * fine. Files in public/ are copied verbatim and keep one URL however the page renders.
+   */
+  shareImage?: string;
+  /*
+   * Dimensions of `shareImage`, in pixels. THEY MUST TRAVEL WITH IT.
+   *
+   * These default to the size of the shipped `public/open-graph.png`. Files in public/ are
+   * copied verbatim and never processed, so nothing can measure the real image at build time
+   * and nothing will warn when these stop matching — a client dropping in a differently sized
+   * card image silently publishes false dimensions. Found exactly that way: a live site
+   * serving a 1280x672 image while declaring 1200x630.
+   *
+   * A crawler uses these to lay the card out before it fetches the image, so wrong values are
+   * worse than none. If the real size is not known, pass null for both and the two tags are
+   * omitted — the scrapers all measure the image themselves anyway.
+   */
+  shareImageWidth?: number | null;
+  shareImageHeight?: number | null;
+  /**
+   * Third-party analytics, and the consent UI that governs it. Default true.
+   *
+   * SET FALSE ON ANY PAGE WHOSE URL CAN CARRY A CREDENTIAL. Magic-link, password-reset,
+   * invitation and email-verification links arrive as `?t=<token>`; a share link carries its
+   * token in the path. Every one of those is a live credential sitting in the address.
+   *
+   * GTM's container script is NOT consent-gated. Consent Mode governs what tags may STORE, not
+   * whether the container loads, and the container reports the page URL. So on a consent-
+   * respecting site with nothing accepted, the token still reaches Google before the visitor
+   * has finished using it. That is a real leak, not a theoretical one.
+   *
+   * It also switches off the cookie banner, deliberately: with no third party on the page the
+   * banner governs nothing, and its analytics and marketing toggles would control something
+   * that is not there, over the top of somebody's file browser. A session cookie is strictly
+   * necessary and needs no consent.
+   *
+   * ConsentInit still renders, so Consent Mode defaults stay set for the pages that do load a
+   * container - a visitor moving from the portal back to the marketing site keeps one
+   * consistent state rather than an unset one.
+   */
+  analytics?: boolean;
+  /**
+   * The back-to-top control. Default true.
+   *
+   * It rendered on every page of every site with nothing to turn it off - a small thing, and
+   * exactly the shape of the problem: the package deciding something for six clients because
+   * nobody wrote down that they might disagree.
+   */
+  scrollTop?: boolean;
+}
+
+const {
+  title,
+  description,
+  brandTitle = brandTitles,
+  noindex = false,
+  shareImage = '/open-graph.png',
+  /*
+   * MEASURED, not assumed. Both default to the real size of public/open-graph.png, read from the
+   * file's own header at build time - so replacing the card art cannot leave the tags describing
+   * the old one, which is what happened on every generation-2 site.
+   *
+   * A page passing explicit values still wins, and an unreadable file leaves both null, which
+   * omits the tags rather than publishing a guess.
+   */
+  shareImageWidth = measuredShareImage?.width ?? null,
+  shareImageHeight = measuredShareImage?.height ?? null,
+  analytics = true,
+  scrollTop = true,
+} = Astro.props;
+
+/*
+ * Canonical URL. Only emitted once `site` is derived from `domain` in webmonterey.json.
+ * Astro.site is undefined until then, and a canonical pointing at localhost is worse than none.
+ */
+const canonical = !noindex && Astro.site ? new URL(Astro.url.pathname, Astro.site).href : undefined;
+
+/*
+ * Open Graph image. Absolute, because every scraper requires that — a relative og:image is
+ * simply ignored, which is indistinguishable from having none.
+ *
+ * So it is emitted only once `site` is derived from `domain` in webmonterey.json, the same
+ * gate the canonical tag uses. Until then `twitter:card` falls back to `summary`: declaring
+ * `summary_large_image` with no image is what produced a blank card on every page this
+ * starter has shipped, because the card type promises an image the markup never supplied.
+ */
+const shareImageUrl = Astro.site ? new URL(shareImage, Astro.site).href : undefined;
+/*
+ * `Page title | Client Name`, built here rather than typed into every page's JSON - one place
+ * to change it, and no page can forget.
+ *
+ * THE GUARD MATTERS. A page whose title already contains the client name - a homepage, most
+ * likely - would otherwise render "WebMonterey | WebMonterey". And displayName() falls back to
+ * the domain rather than ever publishing "CHANGEME" into a <title>, which is a thing a visitor
+ * and a search engine both see.
+ */
+/* shortName, not displayName: a long client name in every <title> truncates the page name away. */
+const siteName = shortName;
+const pageTitle =
+  brandTitle && siteName && !title.includes(siteName) ? `${title} | ${siteName}` : title;
+
+/*
+ * SITE OVERLAYS - dialogs, drawers, slide-in panels - rendered once at the end of <body>.
+ *
+ * A third chrome category beyond header and footer, and it is not a nicety: a mobile menu panel
+ * and a call-to-action drawer both have to live outside <main> to be positioned and to sit above
+ * everything, so a site with either has no way to render it through the block system. Generation
+ * 2 put them in its own base.astro; the package's layout is not the client's to edit, so they
+ * come through the registry instead.
+ */
+const Panels = panels;
+
+/*
+ * THE SITE'S CHROME, AS SLOT FALLBACK - and it belongs HERE, not in the block router.
+ *
+ * It was in the router first, and that meant only pages rendered from page JSON got a header:
+ * a site's OWN routes - a calendar, a /programs/[slug] - render <Base> directly and came out
+ * with no header, no footer and no announcement bar. So did the package's own /webm page. On a
+ * rebuild that is 27 pages quietly missing their navigation.
+ *
+ * As a slot fallback, any route that uses this layout gets the chrome, and a route that wants
+ * something else still overrides it by filling the slot. That is how generation 2 did it, and
+ * the reason is the same.
+ */
+const Header = header;
+const Footer = footer;
+
+/*
+ * THE SITE'S JSON-LD, if it declares one. The package emits none of its own: a candidate, a
+ * recording studio and a library charity are not variants of one shape, and the generic graph
+ * that tried to be grew a field a day and still fit nobody. The builders in
+ * includes/webmonterey/structured-data are the package's half - escaping, @id wiring, dropping
+ * empty fields - and the site composes what it claims. /webm:launch is where that gets written.
+ */
+const StructuredData = structuredData;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    {
+      /*
+      CASCADE ORDER. Must stay ahead of every stylesheet, which is why it is authored here as
+      inline HTML rather than left to global.css.
+
+      The identical statement in global.css is stripped by the bundler — a bare @layer
+      statement is not attached to any rule, so nothing carries it into the output chunk.
+      Layer order then falls back to order of first appearance, the bundler picks that, and a
+      component's scoped style arriving before global.css silently inverts reset and
+      components. `is:inline` keeps Astro's hands off it for the same reason.
+
+      >> Emitted from styles/layers.ts, which global.css is tested against. There is no
+      second list to keep in step by hand any more. <<
+    */
+    }
+    <style is:inline set:html={LAYER_STATEMENT}></style>
+
+    <!-- FIRST. Sets consent state and Consent Mode defaults before any third party loads. -->
+    <ConsentInit />
+    {analytics && gtmId && <TagManager id={gtmId} />}
+
+    {
+      /*
+      Marks the document JS-capable BEFORE first paint. Every .webm-reveal hidden state in
+      animations.css is scoped to `html.js`, so with JavaScript off — or if the bundle simply
+      fails to load — nothing is ever hidden and content is visible rather than stranded at
+      opacity: 0. A crawler that does not run scripts sees the page in full.
+
+      `is:inline` and synchronous on purpose: Astro would otherwise bundle and defer it, which
+      lands after first paint and reintroduces the flash this exists to prevent.
+
+      Below ConsentInit deliberately — it sets a class and touches nothing else, so it cannot
+      affect the Consent Mode defaults that must reach GTM first.
+    */
+    }
+    <script is:inline>
+      document.documentElement.classList.add('js');
+    </script>
+
+    <title>{pageTitle}</title>
+    {description && <meta name="description" content={description} />}
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
+    {canonical && <link rel="canonical" href={canonical} />}
+
+    <meta property="og:type" content="website" />
+    {
+      /*
+      og:title CARRIES THE BRAND, matching <title>. The spec's tidier pairing is an unbranded
+      og:title plus og:site_name, and that was the first version of this - but it changes what a
+      previously-shared card says, and not every platform renders site_name. A rebuild should not
+      silently restyle links people have already posted.
+
+      og:site_name ships as well, because the tag is correct and some platforms use it for
+      attribution. The small redundancy is the price of not changing existing cards.
+    */
+    }
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:site_name" content={siteName} />
+    {description && <meta property="og:description" content={description} />}
+    {canonical && <meta property="og:url" content={canonical} />}
+    {
+      shareImageUrl && (
+        <>
+          <meta property="og:image" content={shareImageUrl} />
+          {shareImageWidth && <meta property="og:image:width" content={String(shareImageWidth)} />}
+          {shareImageHeight && (
+            <meta property="og:image:height" content={String(shareImageHeight)} />
+          )}
+          <meta name="twitter:image" content={shareImageUrl} />
+        </>
+      )
+    }
+    <meta name="twitter:card" content={shareImageUrl ? 'summary_large_image' : 'summary'} />
+
+    {
+      /*
+      ONLY THE ICONS THAT EXIST. Linking favicon.svg unconditionally meant a site without one
+      served the seeded placeholder - WebMonterey's own mark - as the client's icon, and browsers
+      prefer SVG over .ico so it was the one actually shown.
+
+      The PNG sizes are emitted only when an SVG is absent: a scalable icon makes them redundant,
+      and a site that has both does not need four links to say the same thing.
+    */
+    }
+    {icons['favicon.svg'] && <link rel="icon" href="/favicon.svg" type="image/svg+xml" />}
+    {icons['favicon.ico'] && <link rel="icon" href="/favicon.ico" sizes="32x32" />}
+    {
+      !icons['favicon.svg'] && icons['favicon-16x16.png'] && (
+        <link rel="icon" href="/favicon-16x16.png" type="image/png" sizes="16x16" />
+      )
+    }
+    {
+      !icons['favicon.svg'] && icons['favicon-32x32.png'] && (
+        <link rel="icon" href="/favicon-32x32.png" type="image/png" sizes="32x32" />
+      )
+    }
+    {icons['apple-touch-icon.png'] && <link rel="apple-touch-icon" href="/apple-touch-icon.png" />}
+    {icons['site.webmanifest'] && <link rel="manifest" href="/site.webmanifest" />}
+
+    {
+      /*
+      GATED HERE, not left to the component. Structured data describing a page that asks not to
+      be indexed is a contradiction, and the site's component should not have to remember that.
+    */
+    }
+    {
+      StructuredData && !noindex && (
+        <StructuredData title={title} description={description} image={shareImageUrl} />
+      )
+    }
+
+    <slot name="head" />
+  </head>
+
+  <body>
+    <a class="webm-skip-link" href="#webm-main">Skip to content</a>
+
+    <!-- GTM's noscript iframe must be the first thing in <body>. -->
+    {analytics && gtmId && <TagManager id={gtmId} noscript />}
+
+    <slot name="header">{Header && <Header />}</slot>
+
+    <!-- tabindex="-1" is required for the skip link to actually move focus in Safari. -->
+    <main id="webm-main" tabindex="-1">
+      <slot />
+    </main>
+
+    <slot name="footer">{Footer && <Footer />}</slot>
+
+    {Panels.map((Panel) => <Panel />)}
+
+    {scrollTop && <ScrollTop />}
+    {analytics && <CookieConsent />}
+
+    {
+      /*
+      Scroll reveal. Imported ONCE for the whole site — Astro dedupes a bundled <script>
+      across every component instance, so importing observe.ts anywhere else is harmless but
+      pointless. Nothing here runs unless a page actually renders a .webm-reveal element.
+    */
+    }
+    <script>
+      import { initAnimations } from '../includes/webmonterey/animations/observe.ts';
+
+      initAnimations();
+
+      /*
+       * A ClientRouter view transition swaps the DOM without a full reload, so the incoming
+       * page's elements need wiring again. initAnimations is idempotent, and this listener is
+       * inert on a site that has not enabled view transitions.
+       */
+      document.addEventListener('astro:page-load', () => initAnimations());
+    </script>
+  </body>
+</html>

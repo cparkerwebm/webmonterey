@@ -1,0 +1,8 @@
+node_modules
+dist
+.astro
+examples/*/dist
+CHANGELOG.md
+ARCHITECTURE.md
+README.md
+.DS_Store

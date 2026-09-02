@@ -1,0 +1,90 @@
+/*
+ * webm.utilities — single-purpose helpers. Deliberately small.
+ *
+ * This is NOT a utility framework. Layout primitives live in webm.layout; everything else
+ * belongs in a component. If you find yourself wanting to add a tenth utility, the thing you
+ * actually want is a component.
+ */
+
+@layer webm.utilities {
+  /* Screen-reader-only, but revealed when focused (so it works for skip targets). */
+  .webm-visually-hidden:not(:focus):not(:active) {
+    clip-path: inset(50%);
+    block-size: 1px;
+    inline-size: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+  }
+
+  /*
+   * Removes list markers. Pair with role="list" so Safari/VoiceOver keeps list semantics:
+   *   <ul class="webm-list-bare" role="list">
+   * The HTML validator flags role="list" on <ul> as redundant. It is technically correct
+   * and practically wrong — ignore it.
+   */
+  .webm-list-bare {
+    list-style: none;
+    padding-inline-start: 0;
+  }
+
+  .webm-text-center {
+    text-align: center;
+  }
+
+  .webm-text-balance {
+    text-wrap: balance;
+  }
+
+  .webm-hidden {
+    display: none !important;
+  }
+
+  /* Constrains prose to a readable measure inside a wider container. */
+  .webm-measure {
+    max-inline-size: var(--webm-width-text);
+  }
+
+  .webm-measure-center {
+    max-inline-size: var(--webm-width-text);
+    margin-inline: auto;
+  }
+
+  /* Fluid, ratio-locked media box. */
+  .webm-aspect {
+    aspect-ratio: var(--webm-aspect-ratio, 16 / 9);
+    inline-size: 100%;
+    object-fit: cover;
+  }
+
+  .webm-aspect:where([data-ratio='1']) {
+    --webm-aspect-ratio: 1 / 1;
+  }
+  .webm-aspect:where([data-ratio='4-3']) {
+    --webm-aspect-ratio: 4 / 3;
+  }
+  .webm-aspect:where([data-ratio='3-2']) {
+    --webm-aspect-ratio: 3 / 2;
+  }
+  .webm-aspect:where([data-ratio='21-9']) {
+    --webm-aspect-ratio: 21 / 9;
+  }
+
+  /*
+   * THE HONEYPOT FIELD. Off-screen, NOT `display: none`.
+   *
+   * Some bots skip an input that is not displayed, which defeats the whole trap - so it has to
+   * be genuinely rendered and merely out of sight. The other three parts of the contract are
+   * attributes rather than CSS and live in includes/webmonterey/forms/honeypot.ts.
+   *
+   * `!important` deliberately: a form component that lays its fields out with a grid or flex
+   * will otherwise reserve a cell for this one, leaving a visible gap that nobody can explain.
+   */
+  .webm-honeypot {
+    position: absolute !important;
+    inset-inline-start: -9999px !important;
+    inline-size: 1px !important;
+    block-size: 1px !important;
+    overflow: hidden !important;
+  }
+}

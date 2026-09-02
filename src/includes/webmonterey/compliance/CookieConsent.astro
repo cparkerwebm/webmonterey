@@ -1,0 +1,558 @@
+---
+import { copy } from '../copy.ts';
+/*
+ * Cookie consent — banner and preferences dialog. Goes near the end of <body>.
+ *
+ *   <body>
+ *     …
+ *     <CookieConsent />
+ *   </body>
+ *
+ * Pairs with <ConsentInit /> in <head>, which does the actual state and Consent Mode work.
+ * This component is only the UI.
+ *
+ * The dialog is a native <dialog> element: focus trapping, Escape, inertness of the page
+ * behind it, and the top layer all come from the platform. Do not reimplement any of that.
+ *
+ * DISABLING: features.compliance = false in webmonterey.json renders nothing at all.
+ */
+import { features } from '../site.ts';
+
+interface Props {
+  /** Banner heading. */
+  title?: string;
+  /** Banner body copy. */
+  body?: string;
+  /** Where "Privacy policy" points. Omit to hide the link. */
+  privacyUrl?: string;
+}
+
+const { title = copy.consent.title, body = copy.consent.body, privacyUrl } = Astro.props;
+
+const enabled = features.compliance !== false;
+
+const CATEGORIES = [
+  {
+    id: 'essential',
+    name: copy.consent.categories.essential.name,
+    description: copy.consent.categories.essential.description,
+    locked: true,
+  },
+  {
+    id: 'functional',
+    name: copy.consent.categories.functional.name,
+    description: copy.consent.categories.functional.description,
+    locked: false,
+  },
+  {
+    id: 'analytics',
+    name: copy.consent.categories.analytics.name,
+    description: copy.consent.categories.analytics.description,
+    locked: false,
+  },
+  {
+    id: 'marketing',
+    name: copy.consent.categories.marketing.name,
+    description: copy.consent.categories.marketing.description,
+    locked: false,
+  },
+] as const;
+---
+
+{
+  enabled && (
+    <>
+      {/* Banner. Hidden until the script confirms no decision has been recorded. */}
+      <div
+        class="webm-consent-banner"
+        role="region"
+        aria-label={copy.consent.notice}
+        hidden
+        data-webm-consent-banner
+      >
+        <div class="webm-consent-banner__inner">
+          <h2 class="webm-consent-banner__title">{title}</h2>
+          <p class="webm-consent-banner__body">
+            {body}
+            {privacyUrl && (
+              <>
+                {' '}
+                <a href={privacyUrl}>{copy.consent.privacyLink}</a>.
+              </>
+            )}
+          </p>
+          <div class="webm-consent-banner__actions">
+            <button type="button" class="webm-consent-btn" data-webm-consent-manage>
+              {copy.consent.manage}
+            </button>
+            <button type="button" class="webm-consent-btn" data-webm-consent-reject>
+              {copy.consent.rejectAll}
+            </button>
+            <button
+              type="button"
+              class="webm-consent-btn webm-consent-btn--primary"
+              data-webm-consent-accept
+            >
+              {copy.consent.acceptAll}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Preferences dialog. */}
+      <dialog
+        class="webm-consent-dialog"
+        aria-labelledby="webm-consent-title"
+        data-webm-consent-dialog
+      >
+        <form method="dialog" class="webm-consent-dialog__form">
+          <div class="webm-consent-dialog__head">
+            <h2 class="webm-consent-dialog__title" id="webm-consent-title">
+              {copy.consent.prefsTitle}
+            </h2>
+            <button
+              type="button"
+              class="webm-consent-dialog__close"
+              aria-label="Close"
+              data-webm-consent-close
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+                <path
+                  d="M6 6l12 12M18 6L6 18"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </button>
+          </div>
+
+          <p class="webm-consent-dialog__intro">
+            Choose which categories of cookies this site may use. Essential cookies are always on.
+            Your choice is saved for one year.
+          </p>
+
+          <p class="webm-consent-dialog__gpc" hidden data-webm-consent-gpc-note>
+            Your browser is sending a Global Privacy Control signal, so analytics and marketing were
+            turned off automatically. You can still change these below.
+          </p>
+
+          <ul class="webm-consent-list" role="list">
+            {CATEGORIES.map((category) => (
+              <li class="webm-consent-item">
+                <div class="webm-consent-item__text">
+                  <h3 class="webm-consent-item__name">{category.name}</h3>
+                  <p class="webm-consent-item__desc">{category.description}</p>
+                </div>
+                <label class="webm-consent-switch">
+                  <input
+                    type="checkbox"
+                    name={category.id}
+                    checked={category.locked}
+                    disabled={category.locked}
+                    aria-label={`${category.name} cookies`}
+                  />
+                  <span class="webm-consent-switch__track" aria-hidden="true" />
+                </label>
+              </li>
+            ))}
+          </ul>
+
+          <div class="webm-consent-dialog__actions">
+            <button type="button" class="webm-consent-btn" data-webm-consent-reject>
+              {copy.consent.rejectAll}
+            </button>
+            <button type="button" class="webm-consent-btn" data-webm-consent-accept>
+              {copy.consent.acceptAll}
+            </button>
+            <button
+              type="button"
+              class="webm-consent-btn webm-consent-btn--primary"
+              data-webm-consent-save
+            >
+              {copy.consent.save}
+            </button>
+          </div>
+        </form>
+      </dialog>
+    </>
+  )
+}
+
+<style>
+  @layer webm.components.core {
+    /* --- shared button ---------------------------------------------------- */
+
+    /*
+     * The border is load-bearing, not decoration. reset.css sets `button { border: none }`,
+     * so without an explicit border these render as a fill only — and the secondary fill is
+     * --webm-surface-alt (#f1eae8) sitting on --webm-surface-raised (#fff), which is 1.19:1.
+     * That is below the threshold where an edge is perceptible at all, so "Reject all" and
+     * "Manage preferences" read as plain text while only the primary button looks pressable.
+     * Reported from a live site. Restyle freely, but keep SOME visible edge on the secondary
+     * variant or the choice architecture quietly favours "Accept all".
+     */
+    .webm-consent-btn {
+      padding: var(--webm-space-xs) var(--webm-space-md);
+      border: var(--webm-border-width-1) solid var(--webm-border-interactive);
+      border-radius: var(--webm-radius-md);
+      background-color: var(--webm-surface-alt);
+      color: var(--webm-text);
+      font-size: var(--webm-font-size-xs);
+      font-weight: var(--webm-weight-medium);
+      white-space: nowrap;
+      transition:
+        background-color var(--webm-duration-fast) var(--webm-ease-out),
+        border-color var(--webm-duration-fast) var(--webm-ease-out);
+    }
+
+    .webm-consent-btn:hover {
+      background-color: var(--webm-border-subtle);
+    }
+
+    /* Border matches the fill, so the primary reads as one solid shape rather than outlined. */
+    .webm-consent-btn--primary {
+      border-color: var(--webm-action);
+      background-color: var(--webm-action);
+      color: var(--webm-text-on-action);
+    }
+
+    .webm-consent-btn--primary:hover {
+      border-color: var(--webm-action-dark);
+      background-color: var(--webm-action-dark);
+    }
+
+    /* --- banner ----------------------------------------------------------- */
+
+    .webm-consent-banner {
+      position: fixed;
+      inset-block-end: var(--webm-space-md);
+      inset-inline-start: var(--webm-space-md);
+      z-index: var(--webm-z-toast);
+      max-inline-size: min(32rem, calc(100vw - var(--webm-space-lg)));
+      background-color: var(--webm-surface-raised);
+      border-radius: var(--webm-radius-lg);
+      box-shadow: var(--webm-shadow-xl);
+    }
+
+    .webm-consent-banner__inner {
+      padding: var(--webm-space-lg);
+      display: flex;
+      flex-direction: column;
+      gap: var(--webm-space-sm);
+    }
+
+    .webm-consent-banner__title {
+      /*
+       * `md`, not `lg`. This is a notice, not a page heading — at `lg` it out-shouts the
+       * page's own h1 while carrying far less meaning.
+       */
+      font-size: var(--webm-font-size-md);
+      font-weight: var(--webm-weight-semibold);
+      line-height: var(--webm-leading-snug);
+    }
+
+    .webm-consent-banner__body {
+      font-size: var(--webm-font-size-xs);
+      color: var(--webm-text-muted);
+    }
+
+    .webm-consent-banner__actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--webm-space-2xs);
+      margin-block-start: var(--webm-space-2xs);
+    }
+
+    /* "Manage preferences" is the low-emphasis choice — push the decisions right. */
+    .webm-consent-banner__actions > :first-child {
+      margin-inline-end: auto;
+    }
+
+    /* --- dialog ----------------------------------------------------------- */
+
+    .webm-consent-dialog {
+      inline-size: min(34rem, calc(100vw - var(--webm-space-lg)));
+      max-block-size: min(44rem, calc(100vh - var(--webm-space-lg)));
+      padding: 0;
+      border: 0;
+      border-radius: var(--webm-radius-lg);
+      background-color: var(--webm-surface-raised);
+      color: var(--webm-text);
+      box-shadow: var(--webm-shadow-xl);
+    }
+
+    /*
+     * `[open]`, NOT the bare element. A closed <dialog> is display:none, and a plain
+     * `display: flex` here would override that and leave the dialog on the page permanently.
+     * It is opened with showModal(), so [open] is present exactly when it is visible.
+     *
+     * Flex column is what lets the category list scroll while the buttons stay put - see the
+     * form rule below.
+     */
+    .webm-consent-dialog[open] {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .webm-consent-dialog::backdrop {
+      background-color: rgb(0 0 0 / 0.5);
+    }
+
+    /*
+     * THE FORM DOES NOT SCROLL - THE CATEGORY LIST DOES.
+     *
+     * It used to carry `overflow-y: auto` for the whole form, which put the action buttons
+     * inside the scrolling region. With four categories on a laptop that pushed "Reject all"
+     * and "Save preferences" below the fold: you had to scroll a consent dialog to find the
+     * way to decline. That is the exact shape regulators treat as a dark pattern, and it was
+     * an accident rather than a choice.
+     *
+     * `min-block-size: 0` is the load-bearing line. A flex item's default min-height is
+     * `auto`, which refuses to shrink below its content - so the inner scroller never gets a
+     * bounded height and the overflow silently moves back out to the dialog.
+     */
+    .webm-consent-dialog__form {
+      display: flex;
+      flex-direction: column;
+      gap: var(--webm-space-md);
+      padding: var(--webm-space-lg);
+      min-block-size: 0;
+      overflow: hidden;
+    }
+
+    .webm-consent-dialog__head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: var(--webm-space-sm);
+    }
+
+    .webm-consent-dialog__title {
+      font-size: var(--webm-font-size-lg);
+      font-weight: var(--webm-weight-bold);
+    }
+
+    .webm-consent-dialog__close {
+      color: var(--webm-text-muted);
+      padding: var(--webm-space-3xs);
+      border-radius: var(--webm-radius-sm);
+    }
+
+    .webm-consent-dialog__close:hover {
+      color: var(--webm-text);
+    }
+
+    .webm-consent-dialog__intro,
+    .webm-consent-dialog__gpc {
+      font-size: var(--webm-font-size-xs);
+      color: var(--webm-text-muted);
+    }
+
+    .webm-consent-dialog__gpc {
+      padding: var(--webm-space-xs) var(--webm-space-sm);
+      border-radius: var(--webm-radius-md);
+      background-color: var(--webm-surface-alt);
+      color: var(--webm-text);
+    }
+
+    /*
+     * Pinned below the scrolling list, never compressed. `flex-shrink: 0` matters: without it
+     * a short viewport squeezes the buttons instead of the list, and they end up clipped
+     * rather than scrolled - which looks like a rendering bug and is harder to diagnose.
+     */
+    .webm-consent-dialog__actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: var(--webm-space-2xs);
+      flex-shrink: 0;
+    }
+
+    /* --- category list ---------------------------------------------------- */
+
+    .webm-consent-list {
+      list-style: none;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--webm-space-2xs);
+      /* The one scrolling region. See the form rule above for why min-block-size is here. */
+      min-block-size: 0;
+      overflow-y: auto;
+    }
+
+    .webm-consent-item {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: var(--webm-space-md);
+      padding: var(--webm-space-sm) var(--webm-space-md);
+      border-radius: var(--webm-radius-md);
+      background-color: var(--webm-surface-alt);
+    }
+
+    .webm-consent-item__name {
+      font-size: var(--webm-font-size-sm);
+      font-weight: var(--webm-weight-semibold);
+    }
+
+    .webm-consent-item__desc {
+      margin-block-start: var(--webm-space-3xs);
+      font-size: var(--webm-font-size-xs);
+      color: var(--webm-text-muted);
+    }
+
+    /* --- switch ----------------------------------------------------------- */
+
+    .webm-consent-switch {
+      flex-shrink: 0;
+      display: inline-flex;
+      cursor: pointer;
+    }
+
+    /*
+     * The checkbox stays in the accessibility tree and keeps native keyboard behavior and
+     * focus; only its painting is replaced. Do not swap it for a div with role="switch".
+     */
+    .webm-consent-switch input {
+      position: absolute;
+      opacity: 0;
+      inline-size: 1px;
+      block-size: 1px;
+    }
+
+    .webm-consent-switch__track {
+      display: block;
+      inline-size: 2.75rem;
+      block-size: 1.5rem;
+      padding: 0.1875rem;
+      border-radius: var(--webm-radius-pill);
+      background-color: var(--webm-border-subtle);
+      transition: background-color var(--webm-duration-fast) var(--webm-ease-out);
+    }
+
+    .webm-consent-switch__track::after {
+      content: '';
+      display: block;
+      inline-size: 1.125rem;
+      block-size: 1.125rem;
+      border-radius: var(--webm-radius-circle);
+      background-color: var(--webm-base-100);
+      box-shadow: var(--webm-shadow-sm);
+      transition: translate var(--webm-duration-fast) var(--webm-ease-out);
+    }
+
+    .webm-consent-switch input:checked + .webm-consent-switch__track {
+      background-color: var(--webm-action);
+    }
+
+    .webm-consent-switch input:checked + .webm-consent-switch__track::after {
+      translate: 1.25rem 0;
+    }
+
+    /* Essential: on, but visibly not yours to change. */
+    .webm-consent-switch input:disabled + .webm-consent-switch__track {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .webm-consent-switch input:focus-visible + .webm-consent-switch__track {
+      outline: var(--webm-focus-ring);
+      outline-offset: var(--webm-focus-offset);
+    }
+  }
+</style>
+
+<script>
+  import { CONSENT_COOKIE, CONSENT_EVENT, CONSENT_MAX_AGE, getConsent } from './consent.ts';
+
+  const banner = document.querySelector<HTMLElement>('[data-webm-consent-banner]');
+  const dialog = document.querySelector<HTMLDialogElement>('[data-webm-consent-dialog]');
+
+  if (banner && dialog) {
+    const root = document.documentElement;
+    const OPTIONAL = ['functional', 'analytics', 'marketing'] as const;
+
+    const commit = (granted: readonly string[]) => {
+      const value = granted.join(',');
+
+      // `SameSite=Lax` and no `Secure` on localhost, so it works in dev over http.
+      const secure = location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = `${CONSENT_COOKIE}=${encodeURIComponent(value)}; Max-Age=${CONSENT_MAX_AGE}; Path=/; SameSite=Lax${secure}`;
+
+      root.dataset.webmConsent = value;
+      delete root.dataset.webmConsentPending;
+
+      const has = (c: string) => granted.includes(c);
+      const g = (v: boolean) => (v ? 'granted' : 'denied');
+
+      /*
+       * Tell Google what changed. Use the gtag() function ConsentInit defined, NOT a raw
+       * dataLayer.push of an array — gtag pushes the `arguments` object, and GTM's consent
+       * handling keys off that shape. Harmless when GTM is absent: it just appends to an
+       * array nobody reads.
+       */
+      window.gtag?.('consent', 'update', {
+        ad_storage: g(has('marketing')),
+        ad_user_data: g(has('marketing')),
+        ad_personalization: g(has('marketing')),
+        analytics_storage: g(has('analytics')),
+        functionality_storage: g(has('functional')),
+        personalization_storage: g(has('functional')),
+        security_storage: 'granted',
+      });
+
+      banner.hidden = true;
+      if (dialog.open) dialog.close();
+
+      // Features listening via whenConsented()/onConsentChange() react to this.
+      document.dispatchEvent(new CustomEvent(CONSENT_EVENT));
+    };
+
+    const syncToggles = () => {
+      const state = getConsent();
+      for (const id of OPTIONAL) {
+        const input = dialog.querySelector<HTMLInputElement>(`input[name="${id}"]`);
+        if (input) input.checked = state[id];
+      }
+      const note = dialog.querySelector<HTMLElement>('[data-webm-consent-gpc-note]');
+      if (note) note.hidden = root.dataset.webmConsentGpc !== '1';
+    };
+
+    const openDialog = () => {
+      syncToggles();
+      dialog.showModal();
+    };
+
+    // Banner shows only when no decision is recorded. A GPC signal counts as a decision —
+    // re-asking would undermine the signal the visitor already sent.
+    if (root.dataset.webmConsentPending === '1') banner.hidden = false;
+
+    dialog
+      .querySelector('[data-webm-consent-close]')
+      ?.addEventListener('click', () => dialog.close());
+
+    for (const el of document.querySelectorAll('[data-webm-consent-manage]')) {
+      el.addEventListener('click', openDialog);
+    }
+    for (const el of document.querySelectorAll('[data-webm-consent-accept]')) {
+      el.addEventListener('click', () => commit(['functional', 'analytics', 'marketing']));
+    }
+    for (const el of document.querySelectorAll('[data-webm-consent-reject]')) {
+      el.addEventListener('click', () => commit([]));
+    }
+
+    dialog.querySelector('[data-webm-consent-save]')?.addEventListener('click', () => {
+      commit(
+        OPTIONAL.filter(
+          (id) => dialog.querySelector<HTMLInputElement>(`input[name="${id}"]`)?.checked,
+        ),
+      );
+    });
+
+    // openPreferences() from consent.ts — lets a footer link reopen this.
+    document.addEventListener('webm:consent-open', openDialog);
+  }
+</script>

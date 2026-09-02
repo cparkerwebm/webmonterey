@@ -1,0 +1,9 @@
+{
+  "name": "Contact",
+  "fields": [
+    { "name": "name", "label": "Name", "required": true },
+    { "name": "email", "label": "Email", "required": true },
+    { "name": "message", "label": "Message", "required": true }
+  ],
+  "notify": { "to": ["hello@example.com"], "subject": "Inquiry" }
+}

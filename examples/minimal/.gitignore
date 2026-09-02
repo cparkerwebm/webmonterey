@@ -1,0 +1,5 @@
+
+
+# Materialized by `webm sync` on every install. Package-owned; never commit.
+# Client skills go BESIDE it, at .claude/skills/<name>/.
+.claude/skills/webm/

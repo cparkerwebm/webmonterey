@@ -1,0 +1,18 @@
+{
+  "//": "The site CI builds on every PR. Deliberately configured, so doctor's checks run against a realistic site rather than an unconfigured one.",
+  "client": "Minimal Example",
+  "domain": "minimal.example.com",
+  "repo": "cparkerwebm/webmonterey",
+  "worker": "webm-minimal-example",
+  "launched": null,
+  "timeZone": "America/Los_Angeles",
+  "locale": "en-US",
+  "organization": {
+    "type": "Organization"
+  },
+  "features": {
+    "compliance": true,
+    "d1": true,
+    "turnstile": false
+  }
+}

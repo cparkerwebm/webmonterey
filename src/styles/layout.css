@@ -1,0 +1,235 @@
+/*
+ * webm.layout — the structural primitives every page block is built from.
+ *
+ * MODEL: every block is a full-bleed row (.webm-section) wrapping a constrained inner
+ * (.webm-container). --webm-width-max is the SITE bound; prose additionally constrains to
+ * --webm-width-text or line length becomes unreadable.
+ *
+ * Variants are data attributes, not modifier classes, so a component can pass them straight
+ * through from its schema: <section class="webm-section" data-tone={tone}>
+ */
+
+@layer webm.layout {
+  /* --- full-bleed row ------------------------------------------------------ */
+
+  .webm-section {
+    inline-size: 100%;
+    padding-block: var(--webm-section-md);
+    background-color: var(--webm-surface);
+  }
+
+  .webm-section:where([data-tone='alt']) {
+    background-color: var(--webm-surface-alt);
+  }
+
+  .webm-section:where([data-tone='inverse']) {
+    background-color: var(--webm-surface-inverse);
+    color: var(--webm-text-inverse);
+  }
+
+  .webm-section:where([data-tone='accent']) {
+    background-color: var(--webm-surface-accent);
+    color: var(--webm-text-strong);
+  }
+
+  .webm-section:where([data-space='none']) {
+    padding-block: 0;
+  }
+  .webm-section:where([data-space='sm']) {
+    padding-block: var(--webm-section-sm);
+  }
+  .webm-section:where([data-space='lg']) {
+    padding-block: var(--webm-section-lg);
+  }
+  .webm-section:where([data-space='xl']) {
+    padding-block: var(--webm-section-xl);
+  }
+
+  /* --- constrained inner --------------------------------------------------- */
+
+  /*
+   * `inline-size: min(100% - 2*gutter, MAX)` rather than `max-width + padding-inline`:
+   * the CONTENT box is then exactly MAX at large viewports regardless of box-sizing,
+   * and no calc() on max-width is needed.
+   */
+  .webm-container {
+    inline-size: min(
+      100% - (var(--webm-gutter) * 2),
+      var(--webm-container-width, var(--webm-width-max))
+    );
+    margin-inline: auto;
+  }
+
+  .webm-container:where([data-width='wide']) {
+    --webm-container-width: var(--webm-width-wide);
+  }
+  .webm-container:where([data-width='content']) {
+    --webm-container-width: var(--webm-width-content);
+  }
+  .webm-container:where([data-width='narrow']) {
+    --webm-container-width: var(--webm-width-narrow);
+  }
+  .webm-container:where([data-width='text']) {
+    --webm-container-width: var(--webm-width-text);
+  }
+
+  /* --- stack: vertical rhythm ---------------------------------------------- */
+
+  .webm-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--webm-stack-gap, var(--webm-space-md));
+  }
+
+  .webm-stack:where([data-gap='2xs']) {
+    --webm-stack-gap: var(--webm-space-2xs);
+  }
+  .webm-stack:where([data-gap='xs']) {
+    --webm-stack-gap: var(--webm-space-xs);
+  }
+  .webm-stack:where([data-gap='sm']) {
+    --webm-stack-gap: var(--webm-space-sm);
+  }
+  .webm-stack:where([data-gap='lg']) {
+    --webm-stack-gap: var(--webm-space-lg);
+  }
+  .webm-stack:where([data-gap='xl']) {
+    --webm-stack-gap: var(--webm-space-xl);
+  }
+
+  /* --- cluster: horizontal group that wraps -------------------------------- */
+
+  .webm-cluster {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--webm-cluster-gap, var(--webm-space-sm));
+  }
+
+  .webm-cluster:where([data-justify='between']) {
+    justify-content: space-between;
+  }
+  .webm-cluster:where([data-justify='center']) {
+    justify-content: center;
+  }
+  .webm-cluster:where([data-justify='end']) {
+    justify-content: flex-end;
+  }
+
+  .webm-cluster:where([data-gap='2xs']) {
+    --webm-cluster-gap: var(--webm-space-2xs);
+  }
+  .webm-cluster:where([data-gap='xs']) {
+    --webm-cluster-gap: var(--webm-space-xs);
+  }
+  .webm-cluster:where([data-gap='md']) {
+    --webm-cluster-gap: var(--webm-space-md);
+  }
+  .webm-cluster:where([data-gap='lg']) {
+    --webm-cluster-gap: var(--webm-space-lg);
+  }
+
+  /* --- grid: auto-fitting columns ------------------------------------------ */
+
+  /* No breakpoints — the grid reflows on available width, not viewport width. */
+  .webm-grid {
+    display: grid;
+    gap: var(--webm-grid-gap, var(--webm-space-lg));
+    grid-template-columns: repeat(auto-fit, minmax(min(var(--webm-grid-min, 18rem), 100%), 1fr));
+  }
+
+  .webm-grid:where([data-columns='2']) {
+    --webm-grid-min: 24rem;
+  }
+  .webm-grid:where([data-columns='3']) {
+    --webm-grid-min: 18rem;
+  }
+  .webm-grid:where([data-columns='4']) {
+    --webm-grid-min: 14rem;
+  }
+
+  .webm-grid:where([data-gap='sm']) {
+    --webm-grid-gap: var(--webm-space-sm);
+  }
+  .webm-grid:where([data-gap='md']) {
+    --webm-grid-gap: var(--webm-space-md);
+  }
+  .webm-grid:where([data-gap='xl']) {
+    --webm-grid-gap: var(--webm-space-xl);
+  }
+
+  /* --- breakout grid (opt-in, editorial pages) ----------------------------- */
+
+  /*
+   * Named grid lines let a child pick its own width with one declaration:
+   *   <div class="webm-breakout">
+   *     <p>…</p>                        <- defaults to `content`
+   *     <figure data-span="full">…</figure>
+   *   </div>
+   */
+  .webm-breakout {
+    display: grid;
+    grid-template-columns:
+      [full-start] minmax(var(--webm-gutter), 1fr)
+      [wide-start] minmax(0, calc((var(--webm-width-max) - var(--webm-width-wide)) / 2))
+      [content-start] minmax(0, calc((var(--webm-width-wide) - var(--webm-width-content)) / 2))
+      [text-start] min(100% - (var(--webm-gutter) * 2), var(--webm-width-text)) [text-end]
+      minmax(0, calc((var(--webm-width-wide) - var(--webm-width-content)) / 2))
+      [content-end] minmax(0, calc((var(--webm-width-max) - var(--webm-width-wide)) / 2))
+      [wide-end] minmax(var(--webm-gutter), 1fr) [full-end];
+  }
+
+  .webm-breakout > * {
+    grid-column: content;
+  }
+  .webm-breakout > :where([data-span='text']) {
+    grid-column: text;
+  }
+  .webm-breakout > :where([data-span='wide']) {
+    grid-column: wide;
+  }
+  .webm-breakout > :where([data-span='full']) {
+    grid-column: full;
+  }
+
+  /* --- media bleed: image edge-to-edge behind constrained content ---------- */
+
+  .webm-section:where([data-media]) {
+    position: relative;
+    isolation: isolate;
+    padding-block: var(--webm-section-lg);
+    color: var(--webm-text-inverse);
+  }
+
+  .webm-section__bleed {
+    position: absolute;
+    inset: 0;
+    z-index: var(--webm-z-below);
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+  }
+
+  /* Scrim over the bleed image, so overlaid text keeps its contrast ratio. */
+  .webm-section:where([data-media])::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: var(--webm-z-below);
+    background-color: color-mix(
+      in oklch,
+      var(--webm-base-900) var(--webm-media-scrim, 55%),
+      transparent
+    );
+  }
+
+  .webm-section:where([data-scrim='light']) {
+    --webm-media-scrim: 30%;
+  }
+  .webm-section:where([data-scrim='heavy']) {
+    --webm-media-scrim: 75%;
+  }
+  .webm-section:where([data-scrim='none']) {
+    --webm-media-scrim: 0%;
+  }
+}

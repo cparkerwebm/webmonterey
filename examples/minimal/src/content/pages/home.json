@@ -1,0 +1,15 @@
+{
+  "title": "Minimal Example",
+  "showTitle": true,
+  "description": "The site CI builds on every pull request.",
+  "blocks": [
+    {
+      "type": "content-000001",
+      "heading": "It builds",
+      "body": ["This page exists so CI has something real to build."]
+    },
+    {
+      "type": "region-000001"
+    }
+  ]
+}

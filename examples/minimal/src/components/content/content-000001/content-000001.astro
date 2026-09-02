@@ -1,0 +1,19 @@
+---
+import type { z } from 'astro/zod';
+import type { schema } from './schema.ts';
+
+type Props = z.infer<typeof schema>;
+const { heading, body } = Astro.props;
+---
+
+<section class="webm-section">
+  {heading && <h2>{heading}</h2>}
+  {body.map((p) => <p>{p}</p>)}
+</section>
+
+<style>
+  /* Tokens only - no literal values. `webm doctor` checks this. */
+  .webm-section {
+    padding-block: var(--webm-section-md);
+  }
+</style>

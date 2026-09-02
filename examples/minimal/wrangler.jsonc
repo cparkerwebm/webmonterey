@@ -1,0 +1,28 @@
+{
+  "name": "webm-minimal-example",
+  "compatibility_date": "2026-08-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist/client",
+    "not_found_handling": "404-page",
+    // Every route with `export const prerender = false`, in BOTH slash forms.
+    // Missing one returns 200 to curl and a 404 page to Chrome.
+    "run_worker_first": ["/_actions/*", "/contact", "/contact/"],
+  },
+  "observability": { "enabled": true },
+  "workers_dev": true,
+  "preview_urls": true,
+
+  /*
+   * A LOCAL D1, so the example exercises the real storage path.
+   *
+   * Without it the contact form has nowhere to deliver - features.d1 off, no Mailgun key - and
+   * the action now refuses rather than saying thank you and dropping the enquiry. That guard is
+   * correct, and a fixture that trips it tests less than it should.
+   *
+   * `wrangler dev --local` creates this database on demand; no remote resource exists.
+   */
+  "d1_databases": [
+    { "binding": "DB", "database_name": "webm-minimal-example-db", "database_id": "local-only" },
+  ],
+}

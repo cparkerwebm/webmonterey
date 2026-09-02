@@ -1,0 +1,23 @@
+---
+/*
+ * WORKSPACE — a scratch page for building components.
+ *
+ * Drop a component in here to look at it in isolation before wiring it into a real page.
+ * Nothing here ships to visitors: the page is `noindex, nofollow` and excluded from the
+ * sitemap (see NOINDEX_ROUTES in astro.config.mjs).
+ *
+ * It is NOT linked from anywhere. Reach it directly at /webm.
+ *
+ * Leave it empty when you are done — anything left behind renders on every deploy, including
+ * production.
+ */
+import Base from '../layouts/base.astro';
+---
+
+<Base title="WebMonterey Workspace" noindex>
+  <section class="webm-section">
+    <div class="webm-container">
+      <!-- Build here. -->
+    </div>
+  </section>
+</Base>

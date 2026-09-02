@@ -1,0 +1,70 @@
+# Cloudflare Workers static-asset headers.
+#
+# The adapter MERGES this with its own generated rules (it adds immutable Cache-Control for
+# /_astro/*), so do not add caching rules for hashed assets here.
+#
+# Deliberately conservative: these are safe for every client site as shipped. The full CSP
+# ships REPORT-ONLY — it enforces nothing and cannot break a site. See the notes below before
+# promoting it to enforcing.
+
+/*
+  # Stop browsers guessing a MIME type and executing an upload as script.
+  X-Content-Type-Options: nosniff
+
+  # Nobody may frame this site. Replaces the legacy X-Frame-Options.
+  Content-Security-Policy: frame-ancestors 'none'
+
+  # Send the origin to other sites, the full URL to our own. Keeps paths out of referrers.
+  Referrer-Policy: strict-origin-when-cross-origin
+
+  # Turn off APIs the site does not use, for itself and anything it embeds.
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()
+
+  # Two years, and eligible for preload. See the caveat below before uncommenting.
+  # Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+
+  # Report-only. Violations appear in the browser console and NOTHING is blocked. See below.
+  Content-Security-Policy-Report-Only: default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: https://www.googletagmanager.com https://www.google-analytics.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://challenges.cloudflare.com
+
+# THE REPORT-ONLY CSP
+#
+# Report-only enforces nothing, so this is safe to ship unconfigured: a client site with an
+# untuned policy gets console warnings, never a broken page. Read the console on a real
+# browser — a status-code check cannot see a CSP violation.
+#
+# WHAT IT COVERS. The hosts above are the starter's complete third-party list: Google Tag
+# Manager and Google Analytics (only ever loaded with analytics consent) and Cloudflare
+# Turnstile. Everything else is 'self'.
+#
+# WHAT YOU MUST ADD PER CLIENT:
+#   - R2 media — `img-src`/`media-src https://media.<client-domain>` if the site uses it.
+#     Not included here because the host is derived from the client's own domain.
+#   - Any third party added through the `add-third-party` skill. Adding the script without
+#     adding its host here means the policy stops describing the site.
+#
+# WHY 'unsafe-inline' IS IN BOTH script-src AND style-src. Not laziness — it is structural,
+# and measured on a real build. Every page carries three inline scripts and three inline
+# styles:
+#   - ConsentInit's blocking script, which must run before any third party and therefore
+#     cannot be an external file.
+#   - The `@layer` order statement, which base.astro emits inline BECAUSE a bare @layer
+#     statement does not survive bundling (see CLAUDE.md Traps — moving it out of the
+#     document silently inverts the cascade).
+#   - Astro's own inlining of small component scripts and scoped styles, which changes hash
+#     every build, so static hashes in this file would go stale on the next deploy.
+# Nonces would be the real fix and need a server-rendered response; most routes here are
+# static. So 'unsafe-inline' stays until that changes — but note it weakens ONLY the inline
+# case. default-src, form-action, base-uri, object-src and the host allowlists still catch an
+# injected external script, a form retargeted at another origin, and a rewritten <base>.
+#
+# PROMOTING IT TO ENFORCING. Per client, once the console is clean on every page including
+# forms: rename the header to `Content-Security-Policy`. Do it on a preview URL first, click
+# through every route, and submit a form — Turnstile renders in an iframe, so `frame-src` is
+# the directive most likely to bite, and it fails in a way that looks like the widget simply
+# not appearing.
+#
+# HSTS
+#
+# Only enable once the custom domain is live and HTTPS is confirmed working, INCLUDING every
+# subdomain. `includeSubDomains` will break any subdomain still served over plain HTTP, and
+# `preload` is effectively irreversible for two years.

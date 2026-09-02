@@ -1,0 +1,126 @@
+---
+/*
+ * THE BLOCK ROUTER
+ *
+ * Every page on the site renders through this one route. It reads a page's JSON, walks its
+ * `blocks` array in order, and renders each one via the component registry.
+ *
+ * Adding a page = adding a JSON file. No route file is ever written per page.
+ */
+import type { GetStaticPaths, InferGetStaticPropsType } from 'astro';
+import { getCollection } from 'astro:content';
+import Base from '../layouts/base.astro';
+/*
+ * The registry lives in the CLIENT repo, because every visible component does - the package
+ * ships none. The integration resolves this module to src/components/registry.ts in the site
+ * being built.
+ */
+import { blocks, registeredTypes, pageHeader } from 'virtual:webm/registry';
+
+export const getStaticPaths = (async () => {
+  const pages = await getCollection('pages');
+
+  return pages.map((page) => ({
+    /*
+     * `home` is the only special case: it maps to `/`, not `/home`.
+     * A rest param of `undefined` is how Astro matches the site root.
+     */
+    params: { slug: page.id === 'home' ? undefined : page.id },
+    props: { page },
+  }));
+}) satisfies GetStaticPaths;
+
+type Props = InferGetStaticPropsType<typeof getStaticPaths>;
+
+const { page } = Astro.props as Props;
+
+/* Capitalized, because Astro renders a lowercase identifier as an HTML tag rather than a component. */
+/* Chrome is the LAYOUT's job - see base.astro. This route only supplies the page header. */
+const PageHeader = pageHeader;
+---
+
+{
+  /*
+  noindex and shareImage come from the PAGE, not just from a route that hardcodes them. A site
+  marking a confirmation page noindex in its own JSON had that silently ignored on rebuild - the
+  page came back indexable, with a canonical, which is the opposite of what it asked for.
+
+  Read defensively: a site using the package's own content schema may not define either field.
+*/
+}
+<Base
+  title={page.data.title}
+  description={page.data.description}
+  noindex={(page.data as { noindex?: boolean }).noindex ?? false}
+  {...(page.data as { shareImage?: string }).shareImage
+    ? { shareImage: (page.data as { shareImage?: string }).shareImage }
+    : {}}
+>
+  {
+    /*
+    The site's own chrome, rendered once per page. The package ships no header and no footer -
+    it ships no components at all - so these come from the client's registry.ts. A site with
+    neither gets a page with neither, which is the scaffold's normal state.
+  */
+  }
+  {/* See `showTitle` in src/content.config.ts for why this defaults on. */}
+  {
+    /*
+     * THE PAGE HEADER. A site that declares `pageHeader` in its registry gets it here, with the
+     * page's whole frontmatter - so a header can use a subtitle, photos, a category, anything the
+     * package has never heard of. Without it a site wanting more than an <h1> had to fork this
+     * route, and a fork stops receiving every later fix to block lookup and unknown-type
+     * reporting.
+     *
+     * The fallback stays a bare <h1> because a page whose only headings are its blocks' h2s has
+     * no h1 at all - a document-outline bug rather than a style preference.
+     */
+    page.data.showTitle &&
+      (PageHeader ? (
+        <PageHeader {...page.data} />
+      ) : (
+        <section class="webm-section" data-space="sm">
+          <div class="webm-container" data-width="text">
+            <h1>{page.data.title}</h1>
+          </div>
+        </section>
+      ))
+  }
+  {
+    page.data.blocks.map((block) => {
+      /*
+       * Object.hasOwn, not a plain lookup: `blocks[block.type]` walks the prototype chain, so
+       * a page JSON containing {"type": "constructor"} (or toString, valueOf, __proto__)
+       * returns a truthy function, sails past the guard below, and kills the build with an
+       * opaque "no valid renderer" error.
+       */
+      const Block = Object.hasOwn(blocks, block.type) ? blocks[block.type] : undefined;
+
+      if (!Block) {
+        /*
+         * The block is in the JSON but not in the registry, so it renders as nothing.
+         * Almost always a missing registry entry — see src/components/registry.ts.
+         */
+        const known = registeredTypes();
+        // Leading newline: without it this concatenates onto Astro's progress line
+        // ("├─ /about/index.htmlUnknown block…") and is easy to miss entirely.
+        console.warn(
+          `\n[webm] Unknown block type "${block.type}" in src/content/pages/${page.id}.json — ` +
+            `it is not in the component registry, so it will render as nothing. ` +
+            `Registered types: ${known.length ? known.join(', ') : '(none yet)'}`,
+        );
+        return null;
+      }
+
+      /*
+       * `type` is stripped before spreading. It identifies the component; it is not a prop.
+       * Left in, every component receives it, and a block rendering <button {...rest}> gets
+       * type="content-000001" — an invalid value browsers resolve to type="submit", silently
+       * changing what the button does inside a form.
+       */
+      const { type: _type, ...props } = block;
+
+      return <Block {...props} />;
+    })
+  }
+</Base>

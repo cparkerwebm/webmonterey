@@ -1,0 +1,227 @@
+/*
+ * webm.tokens — the design system. THIS FILE IS THE SOURCE OF TRUTH.
+ *
+ * Edit values here. Every colour, size, space, radius, shadow, z-index, duration and easing
+ * used anywhere in the site must come from one of these custom properties — component CSS
+ * contains no literal values.
+ *
+ * To retheme a client, the usual move is to override the token in src/styles/custom/ under
+ * @layer webm.overrides — one declaration cascades everywhere at once, and it keeps the
+ * client's palette in one place someone can find later.
+ *
+ * Editing this file directly is allowed too. A client repo is a copy of the starter and never
+ * pulls a later version forward, so these tokens are the client's to set outright; where the
+ * whole palette differs, changing the values here beats shadowing every one of them from
+ * custom/. Neither choice costs anything at build time — pick the one that will read more
+ * clearly to whoever opens the repo next.
+ */
+
+@layer webm.tokens {
+  :root {
+    /* --- base palette ------------------------------------------------------ */
+    /* Raw neutrals. Everything semantic below points at these, not the other way round. */
+    --webm-base-100: #ffffff;
+    --webm-base-300: #f1eae8;
+    --webm-base-500: #3f3f3f;
+    --webm-base-700: #222222;
+    --webm-base-900: #000000;
+
+    /* --- action ------------------------------------------------------------ */
+    /* The brand colour. Retheming a client usually starts and ends here. */
+    --webm-action: #006abe;
+    --webm-action-dark: #003e80;
+    --webm-action-light: #6bc7ff;
+
+    /* --- surface ----------------------------------------------------------- */
+    --webm-surface: var(--webm-base-100);
+    --webm-surface-alt: var(--webm-base-300);
+    --webm-surface-accent: var(--webm-action-light);
+    --webm-surface-inverse: var(--webm-base-900);
+    --webm-surface-raised: var(--webm-base-100);
+
+    /* --- text -------------------------------------------------------------- */
+    --webm-text: var(--webm-base-700);
+    --webm-text-muted: var(--webm-base-500);
+    --webm-text-strong: var(--webm-base-900);
+    --webm-text-inverse: var(--webm-base-100);
+    --webm-text-on-action: var(--webm-base-100);
+
+    /* --- link -------------------------------------------------------------- */
+    --webm-link: var(--webm-action);
+    --webm-link-hover: var(--webm-action-dark);
+    --webm-link-visited: var(--webm-action-dark);
+
+    /* --- border ------------------------------------------------------------ */
+    --webm-border-subtle: #dcd3d0;
+    --webm-border-interactive: var(--webm-base-500);
+    --webm-border-strong: var(--webm-base-700);
+
+    /* --- state ------------------------------------------------------------- */
+    --webm-state-success: #0f7b3f;
+    --webm-state-warning: #9a6700;
+    --webm-state-danger: #b3261e;
+    --webm-state-info: var(--webm-action);
+
+    /* --- font -------------------------------------------------------------- */
+    /*
+     * System stack by default — zero network cost, no layout shift, no dependency.
+     * To use a real typeface, put the woff2 in public/fonts/, declare @font-face in
+     * src/styles/custom/, and prepend the family here.
+     */
+    --webm-font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --webm-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    /* --- font-size --------------------------------------------------------- */
+    /* Fluid scale. Each step interpolates between a mobile and a desktop size. */
+    --webm-font-size-2xs: clamp(0.6944rem, 0.6859rem + 0.0426vw, 0.72rem);
+    --webm-font-size-xs: clamp(0.8333rem, 0.8111rem + 0.1111vw, 0.9rem);
+    --webm-font-size-sm: clamp(1rem, 0.9583rem + 0.2083vw, 1.125rem);
+    --webm-font-size-md: clamp(1.2rem, 1.1312rem + 0.3438vw, 1.406rem);
+    --webm-font-size-lg: clamp(1.44rem, 1.3341rem + 0.5297vw, 1.758rem);
+    --webm-font-size-xl: clamp(1.728rem, 1.5716rem + 0.7821vw, 2.197rem);
+    --webm-font-size-2xl: clamp(2.074rem, 1.8493rem + 1.1216vw, 2.747rem);
+    --webm-font-size-3xl: clamp(2.488rem, 2.1734rem + 1.5748vw, 3.433rem);
+    --webm-font-size-4xl: clamp(2.986rem, 2.5508rem + 2.1759vw, 4.292rem);
+
+    /* --- leading ----------------------------------------------------------- */
+    --webm-leading-tight: 1.1;
+    --webm-leading-snug: 1.25;
+    --webm-leading-normal: 1.5;
+    --webm-leading-loose: 1.7;
+
+    /* --- tracking ---------------------------------------------------------- */
+    --webm-tracking-tight: -0.02em;
+    --webm-tracking-normal: 0em;
+    --webm-tracking-wide: 0.06em;
+
+    /* --- weight ------------------------------------------------------------ */
+    --webm-weight-regular: 400;
+    --webm-weight-medium: 500;
+    --webm-weight-semibold: 600;
+    --webm-weight-bold: 700;
+
+    /* --- space ------------------------------------------------------------- */
+    --webm-space-3xs: 0.25rem;
+    --webm-space-2xs: 0.5rem;
+    --webm-space-xs: 0.75rem;
+    --webm-space-sm: 1rem;
+    --webm-space-md: 1.5rem;
+    --webm-space-lg: 2rem;
+    --webm-space-xl: 3rem;
+    --webm-space-2xl: 4rem;
+    --webm-space-3xl: 6rem;
+    --webm-space-4xl: 8rem;
+
+    /* --- space, fluid ------------------------------------------------------ */
+    --webm-space-fluid-sm: clamp(1rem, 0.8333rem + 0.8333vw, 1.5rem);
+    --webm-space-fluid-md: clamp(1.5rem, 1.25rem + 1.25vw, 2.25rem);
+    --webm-space-fluid-lg: clamp(2rem, 1.6667rem + 1.6667vw, 3rem);
+    --webm-space-fluid-xl: clamp(3rem, 2.5rem + 2.5vw, 4.5rem);
+    --webm-space-fluid-2xl: clamp(4rem, 3.3333rem + 3.3333vw, 6rem);
+    --webm-space-fluid-3xl: clamp(6rem, 5rem + 5vw, 9rem);
+
+    /* --- section rhythm ---------------------------------------------------- */
+    --webm-section-sm: clamp(2rem, 1.6667rem + 1.6667vw, 3rem);
+    --webm-section-md: clamp(3rem, 2rem + 5vw, 6rem);
+    --webm-section-lg: clamp(4rem, 2.6667rem + 6.6667vw, 8rem);
+    --webm-section-xl: clamp(6rem, 4rem + 10vw, 12rem);
+
+    /* --- gutter ------------------------------------------------------------ */
+    --webm-gutter: clamp(1rem, 0.3333rem + 3.3333vw, 3rem);
+
+    /* --- width ------------------------------------------------------------- */
+    --webm-width-max: 1920px;
+    --webm-width-wide: 1600px;
+    --webm-width-content: 1280px;
+    --webm-width-narrow: 960px;
+    --webm-width-text: 68ch;
+
+    /* --- radius ------------------------------------------------------------ */
+    --webm-radius-none: 0;
+    --webm-radius-xs: 0.125rem;
+    --webm-radius-sm: 0.25rem;
+    --webm-radius-md: 0.5rem;
+    --webm-radius-lg: 1rem;
+    --webm-radius-xl: 1.5rem;
+    --webm-radius-pill: 62.4375rem;
+    --webm-radius-circle: 50%;
+
+    /* --- border-width ------------------------------------------------------ */
+    --webm-border-width-0: 0;
+    --webm-border-width-1: 1px;
+    --webm-border-width-2: 2px;
+    --webm-border-width-4: 4px;
+
+    /* --- shadow ------------------------------------------------------------ */
+    --webm-shadow-xs: 0 1px 2px 0 rgb(34 34 34 / 0.06);
+    --webm-shadow-sm: 0 1px 3px 0 rgb(34 34 34 / 0.1), 0 1px 2px -1px rgb(34 34 34 / 0.1);
+    --webm-shadow-md: 0 4px 6px -1px rgb(34 34 34 / 0.1), 0 2px 4px -2px rgb(34 34 34 / 0.1);
+    --webm-shadow-lg: 0 10px 15px -3px rgb(34 34 34 / 0.1), 0 4px 6px -4px rgb(34 34 34 / 0.1);
+    --webm-shadow-xl: 0 20px 25px -5px rgb(34 34 34 / 0.12), 0 8px 10px -6px rgb(34 34 34 / 0.1);
+
+    /* --- z-index ----------------------------------------------------------- */
+    /* Named layers only. Never write a raw z-index in component CSS. */
+    --webm-z-below: -1;
+    --webm-z-base: 0;
+    --webm-z-raised: 10;
+    --webm-z-sticky: 100;
+    --webm-z-header: 200;
+    --webm-z-drawer: 300;
+    --webm-z-overlay: 400;
+    --webm-z-modal: 500;
+    --webm-z-toast: 600;
+    --webm-z-tooltip: 700;
+    --webm-z-skiplink: 900;
+
+    /* --- duration ---------------------------------------------------------- */
+    --webm-duration-instant: 75ms;
+    --webm-duration-fast: 150ms;
+    --webm-duration-normal: 250ms;
+    --webm-duration-slow: 400ms;
+    --webm-duration-slower: 600ms;
+
+    /* --- easing ------------------------------------------------------------ */
+    --webm-ease-linear: linear;
+    --webm-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --webm-ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+    --webm-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    --webm-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    /* --- scroll reveal ------------------------------------------------------
+     * Defaults for .webm-reveal. Overridable per element with data-reveal-delay
+     * and data-reveal-duration, which observe.ts writes as inline properties. */
+    /*
+     * NOT var(--webm-duration-slow), and not a card-sized distance.
+     *
+     * The motion scale tops out at 400ms, which is tuned for a button, a panel, a dropdown —
+     * something small moving a short way. A reveal is a whole content group arriving, and at
+     * 400ms over 1.5rem it reads as a twitch rather than a movement.
+     *
+     * 7.5rem over 1500ms was arrived at on a real client homepage, not picked. Raising the
+     * duration alone did nothing: --webm-ease-out front-loads the curve, covering most of the
+     * distance in the first third, so extra time only stretches the settle and the element
+     * still appears to arrive at the same moment. Raising distance alone lurched. Both had to
+     * grow together. 5rem at this duration shipped briefly and was pulled — a shorter travel
+     * spends proportionally longer on the settle and reads as drifting into place.
+     *
+     * Reveals therefore get their own duration rather than borrowing from the scale. Reduced
+     * motion is still covered — animations.css forces `transition: none !important` under
+     * `reduce`, so decoupling from the scale's own reduced-motion override costs nothing.
+     */
+    --webm-reveal-duration: 1500ms;
+    --webm-reveal-delay: 0ms;
+    --webm-reveal-distance: 7.5rem;
+    --webm-reveal-ease: var(--webm-ease-out);
+    --webm-reveal-blur: 8px;
+    /* Gap between staggered siblings. The data-delay ladder is multiples of this. */
+    --webm-reveal-stagger-step: 80ms;
+
+    /* --- focus ------------------------------------------------------------- */
+    --webm-focus-width: 3px;
+    --webm-focus-offset: 2px;
+    --webm-focus-color: var(--webm-action);
+
+    /* --- composites -------------------------------------------------------- */
+    --webm-focus-ring: var(--webm-focus-width) solid var(--webm-focus-color);
+  }
+}

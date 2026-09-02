@@ -1,0 +1,15 @@
+# build output and generated files
+dist/
+.astro/
+.wrangler/
+worker-configuration.d.ts
+
+# dependencies and lockfiles
+node_modules/
+package-lock.json
+
+# copied verbatim to the build — leave byte-identical
+public/
+
+# not ours to format
+.git/

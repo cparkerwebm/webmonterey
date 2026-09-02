@@ -1,0 +1,52 @@
+# PACKAGE-MANAGED. Rewritten by `webm sync` on every install - edit it in the package
+# (template/workflows/ci.yml), never here, or your change disappears on the next `npm update`.
+#
+# WHY THIS EXISTS. Sites once shipped with no CI at all, and a dropped action, an absent
+# migration and a route with no middleware all sat in main for weeks because the only thing that
+# would have run `astro check` was a person remembering to.
+#
+# `webm doctor` is in here deliberately. The type checker catches what TypeScript can see; doctor
+# catches what it cannot - an action nothing exports, a table with no migration, a D1 flag with no
+# binding, an on-demand route the asset router will 404.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# One run per branch. Keyed on head_ref||ref_name rather than github.ref, which differs between
+# push and pull_request events and so runs a branch with an open PR twice.
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Check, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # No registry credential. The framework is a public package on npmjs.
+      - run: npm ci
+
+      # astro check. This is the one that fails on a missing prop, a dropped action or an
+      # ambient type that never came across.
+      - run: npm run check
+
+      - run: npm test --if-present
+
+      # The checks a compiler cannot make. Non-blocking for now so it reports rather than
+      # gates - a doctor that fails a repo on its first run gets switched off.
+      - run: npx webm doctor
+        continue-on-error: true
+
+      - run: npm run build

@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22.18 is the floor - the first release with unflagged type stripping, which the CLI
+        # needs to import src/design/*.ts at runtime. 24 is what .nvmrc pins and what Workers
+        # Builds runs.
+        node: ['22.18', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ matrix.node }}' }
+      # `prepare` builds dist/ on npm ci - package.test.ts asserts the published shape, and
+      # bin and files both point into dist/, so an unbuilt tree fails two real checks.
+      - run: npm ci
+      - run: npm test
+      - run: npm run format:check
+
+  astro-current:
+    name: astro (supported)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '24' }
+      - run: npm ci
+
+      # THE EXAMPLE HAS ITS OWN DEPENDENCIES AND THIS REPO IS NOT A WORKSPACE, so a root `npm ci`
+      # installs none of them and `@cparkerwebm/webmonterey` resolves nowhere. Without this the
+      # build below fails on "Cannot find module" and this leg has never once passed.
+      #
+      # `install`, not `ci`: examples/*/package-lock.json is gitignored on purpose, because the
+      # example depends on the package by `file:` reference and its lock is local noise.
+      - run: npm --prefix examples/minimal install
+
+      - run: npm test
+      - name: Build the example and assert against its output
+        # The regression tests for every trap that is observable in dist/. doctor catches what a
+        # person introduces in a client repo; these catch what a change to the PACKAGE would
+        # introduce in every repo at once.
+        run: npm --prefix examples/minimal run test:build
+
+  astro-next-major:
+    # THE EARLY-WARNING LEG: does the package still work on the Astro that is coming? Without it
+    # you find out Astro 8 broke everything when a client's deploy fails, which is exactly how
+    # generation 2 got stuck.
+    #
+    # IT SKIPS UNLESS A HIGHER MAJOR IS ACTUALLY IN PRERELEASE, and that condition is the whole
+    # design. It was pinned to `astro@next` for two weeks - a tag astro has never published - so
+    # it exited on ETARGET every run. Pointed at `beta` it then built against 7.0.0-beta.6, a
+    # stale prerelease of the CURRENT major, months behind latest, and failed on that.
+    #
+    # Both are the same defect: a warning light that is always on. It gets learned as normal, and
+    # then it cannot warn about anything. Silence until there is something to say.
+    name: astro (next major, if any)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '24' }
+
+      - name: Is a higher major in prerelease?
+        id: probe
+        run: |
+          supported=$(node -p "(require('./package.json').peerDependencies.astro.match(/\d+/) || [0])[0]")
+          echo "package supports astro $supported.x"
+          found=""
+          for tag in beta alpha rc next; do
+            v=$(npm view "astro@$tag" version 2>/dev/null || true)
+            [ -z "$v" ] && continue
+            major="${v%%.*}"
+            echo "  astro@$tag = $v"
+            if [ "$major" -gt "$supported" ] 2>/dev/null; then found="$v"; fi
+          done
+          if [ -n "$found" ]; then
+            echo "Astro $found is a higher major than $supported. Testing against it."
+            echo "version=$found" >> "$GITHUB_OUTPUT"
+          else
+            echo "No prerelease of a major above $supported. Nothing to warn about; skipping."
+          fi
+
+      - if: steps.probe.outputs.version != ''
+        run: npm ci
+      - if: steps.probe.outputs.version != ''
+        run: npm --prefix examples/minimal install
+      - if: steps.probe.outputs.version != ''
+        run: npm install --no-save astro@${{ steps.probe.outputs.version }}
+      - if: steps.probe.outputs.version != ''
+        run: npm --prefix examples/minimal install --no-save astro@${{ steps.probe.outputs.version }}
+      - if: steps.probe.outputs.version != ''
+        run: npm test
+      - if: steps.probe.outputs.version != ''
+        run: npm --prefix examples/minimal run test:build

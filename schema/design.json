@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cparkerwebm/webmonterey/schema/design.json",
+  "title": "WebMonterey design system",
+  "description": "Per-client design tokens and brand context. Sits beside webmonterey.json at the repo root. Compiled at build into CSS custom properties, email-safe literals, brand context and a resolved palette.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1, "description": "Bumped only for a breaking change to this shape." },
+
+    "brand": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The words half of the design system. Reaches site copy, social posts and anything written in the client's name.",
+      "properties": {
+        "name": { "type": "string" },
+        "voice": {
+          "type": "string",
+          "description": "How this client writes. One or two sentences, concrete. e.g. 'Direct, credential-led, never breathless. Written for CPAs.'"
+        },
+        "rules": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Hard rules a writer or generator must not break. Phrase each as an instruction, e.g. 'Gold is a fill only - never gold text or links on white.'"
+        },
+        "logo": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "primary": { "type": "string", "description": "Full lockup." },
+            "mark": {
+              "type": "string",
+              "description": "Icon-only mark, for favicons and tight spaces."
+            }
+          }
+        }
+      }
+    },
+
+    "color": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The neutral ramp. Everything semantic points at these, never the other way round. 100 lightest, 900 darkest - the direction does not invert for a dark design.",
+          "properties": {
+            "100": { "type": "string" },
+            "300": { "type": "string" },
+            "500": { "type": "string" },
+            "700": { "type": "string" },
+            "900": { "type": "string" }
+          }
+        },
+        "action": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The brand color. Retheming a client usually starts and ends here.",
+          "properties": {
+            "base": { "type": "string" },
+            "dark": { "type": "string" },
+            "light": { "type": "string" }
+          }
+        },
+        "border": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "subtle": { "type": "string" } }
+        },
+        "state": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "success": { "type": "string" },
+            "warning": { "type": "string" },
+            "danger": { "type": "string" },
+            "info": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "font": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Full CSS font stacks, not family names - no fallbacks are appended. A self-hosted face still needs its @font-face declared in src/styles/custom/.",
+      "properties": {
+        "sans": { "type": "string" },
+        "mono": { "type": "string" }
+      }
+    },
+
+    "radius": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Name only the steps that differ from the defaults.",
+      "properties": {
+        "none": { "type": "string" },
+        "xs": { "type": "string" },
+        "sm": { "type": "string" },
+        "md": { "type": "string" },
+        "lg": { "type": "string" },
+        "xl": { "type": "string" },
+        "pill": { "type": "string" },
+        "circle": { "type": "string" }
+      }
+    },
+
+    "overrides": {
+      "type": "object",
+      "description": "Raw token overrides, applied last. Keys must start with --webm-; anything else is a build error, because a property outside the prefix is set, never read, and the page looks untouched.",
+      "propertyNames": { "pattern": "^--webm-[a-z0-9-]+$" },
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

@@ -1,0 +1,185 @@
+/*
+ * webm.base — element defaults and page-level primitives.
+ * Everything here is driven by tokens. No literal colors, sizes, or durations.
+ */
+
+@layer webm.base {
+  :root {
+    color-scheme: light;
+
+    /*
+     * Focus Not Obscured (WCAG 2.4.11) and anchor targets.
+     *
+     * Once a site has a sticky header region, anything the browser scrolls into view — an
+     * element receiving focus via Tab, a #hash target, the skip link — would otherwise land
+     * underneath it and be invisible while focused.
+     *
+     * A header component sets --webm-header-height itself. The fallback below keeps the
+     * behavior sane before one exists.
+     */
+    --webm-header-height: 0px;
+
+    scroll-padding-block-start: calc(var(--webm-header-height) + var(--webm-space-sm));
+  }
+
+  body {
+    background-color: var(--webm-surface);
+    color: var(--webm-text);
+    font-family: var(--webm-font-sans);
+    font-size: var(--webm-font-size-sm);
+    line-height: var(--webm-leading-normal);
+  }
+
+  /* --- type scale ---------------------------------------------------------- */
+
+  h1,
+  .webm-h1 {
+    font-size: var(--webm-font-size-3xl);
+    line-height: var(--webm-leading-tight);
+    letter-spacing: var(--webm-tracking-tight);
+    font-weight: var(--webm-weight-bold);
+  }
+
+  h2,
+  .webm-h2 {
+    font-size: var(--webm-font-size-2xl);
+    line-height: var(--webm-leading-tight);
+    letter-spacing: var(--webm-tracking-tight);
+    font-weight: var(--webm-weight-bold);
+  }
+
+  h3,
+  .webm-h3 {
+    font-size: var(--webm-font-size-xl);
+    line-height: var(--webm-leading-snug);
+    font-weight: var(--webm-weight-semibold);
+  }
+
+  h4,
+  .webm-h4 {
+    font-size: var(--webm-font-size-lg);
+    line-height: var(--webm-leading-snug);
+    font-weight: var(--webm-weight-semibold);
+  }
+
+  h5,
+  .webm-h5 {
+    font-size: var(--webm-font-size-md);
+    line-height: var(--webm-leading-snug);
+    font-weight: var(--webm-weight-semibold);
+  }
+
+  h6,
+  .webm-h6 {
+    font-size: var(--webm-font-size-sm);
+    line-height: var(--webm-leading-normal);
+    font-weight: var(--webm-weight-semibold);
+    letter-spacing: var(--webm-tracking-wide);
+    text-transform: uppercase;
+  }
+
+  small,
+  .webm-small {
+    font-size: var(--webm-font-size-xs);
+  }
+
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--webm-font-mono);
+    font-size: 0.9em;
+  }
+
+  /* --- links --------------------------------------------------------------- */
+
+  a {
+    color: var(--webm-link);
+  }
+
+  a:hover {
+    color: var(--webm-link-hover);
+  }
+
+  /* --- focus --------------------------------------------------------------- */
+
+  :focus-visible {
+    /*
+     * COMPOSED FROM THE PARTS, not from --webm-focus-ring.
+     *
+     * A custom property containing var() is resolved where it is DECLARED. --webm-focus-ring is
+     * declared on :root, so it resolves to "3px solid <action>" there and inherits down already
+     * resolved - a component setting --webm-focus-color further down the tree changed nothing at
+     * all. Any component on a colored surface was therefore stuck with the site-wide action
+     * color, which is an accessibility failure with no symptom in code review.
+     *
+     * friendsofthemarinalibrary.org fixed this inside its own copy of base.css; every other site
+     * still had it.
+     *
+     * --webm-focus-ring stays defined in the token set: it is a reasonable thing for a client to
+     * reference, and removing it would break any site that does. It is simply not consumed here.
+     */
+    outline: var(--webm-focus-width) solid var(--webm-focus-color);
+    outline-offset: var(--webm-focus-offset);
+  }
+
+  /* --- landmarks ----------------------------------------------------------- */
+
+  /* Required for the skip link to actually move focus in Safari. */
+  #webm-main:focus {
+    outline: none;
+  }
+
+  /* --- skip link ----------------------------------------------------------- */
+
+  .webm-skip-link {
+    position: absolute;
+    inset-inline-start: var(--webm-space-sm);
+    inset-block-start: var(--webm-space-sm);
+    z-index: var(--webm-z-skiplink);
+    padding: var(--webm-space-xs) var(--webm-space-md);
+    background-color: var(--webm-surface);
+    color: var(--webm-text);
+    border-radius: var(--webm-radius-sm);
+    box-shadow: var(--webm-shadow-md);
+    translate: 0 -200%;
+  }
+
+  .webm-skip-link:focus-visible {
+    translate: 0 0;
+  }
+
+  /* --- horizontal rule ----------------------------------------------------- */
+
+  hr {
+    border: 0;
+    border-block-start: var(--webm-border-width-1) solid var(--webm-border-subtle);
+    margin-block: var(--webm-space-lg);
+  }
+
+  /* --- selection ----------------------------------------------------------- */
+
+  ::selection {
+    background-color: var(--webm-surface-accent);
+    color: var(--webm-text-strong);
+  }
+
+  /* --- motion -------------------------------------------------------------- */
+
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.astro/
+.wrangler/
+*.tgz
+.DS_Store
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+pnpm-lock.yaml
+yarn.lock
+bun.lock*
+
+# The example installs the package by file: reference
+examples/*/package-lock.json
+examples/*/.astro/
+dist/

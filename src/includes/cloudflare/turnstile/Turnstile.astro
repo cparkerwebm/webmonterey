@@ -1,0 +1,161 @@
+---
+/*
+ * Cloudflare Turnstile widget. The client half; verify.ts is the server half.
+ *
+ *   <form method="POST" action={actions.submitForm}>
+ *     …fields…
+ *     <Turnstile />
+ *     <button type="submit">Send</button>
+ *   </form>
+ *
+ * Injects a hidden `cf-turnstile-response` input that submits with the form. The server MUST
+ * verify that token — rendering this widget alone protects nothing.
+ *
+ * The SITE key is public and comes from `vars` in wrangler.jsonc as PUBLIC_TURNSTILE_SITE_KEY.
+ * The SECRET key never touches the client.
+ *
+ * NOT consent-gated. Turnstile is strictly necessary for a form to resist abuse, which makes
+ * it an essential cookie under CCPA/GDPR — it runs regardless of the visitor's choices. See
+ * the consent rules in CLAUDE.md.
+ */
+interface Props {
+  /**
+   * Site key. Defaults to PUBLIC_TURNSTILE_SITE_KEY from the environment.
+   * Public by design — safe in markup.
+   */
+  siteKey?: string;
+  /**
+   * Distinguishes this form from others on the site, so a token minted by one cannot be
+   * replayed against another. Pass the SAME value to verifyTurnstile({ expectedAction }).
+   */
+  action?: string;
+  theme?: 'auto' | 'light' | 'dark';
+  size?: 'normal' | 'flexible' | 'compact';
+}
+
+const {
+  siteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY,
+  action,
+  theme = 'auto',
+  size = 'flexible',
+} = Astro.props;
+
+if (!siteKey) {
+  throw new Error(
+    '[webm] Turnstile has no site key. Set PUBLIC_TURNSTILE_SITE_KEY in `vars` in ' +
+      'wrangler.jsonc (and in .dev.vars for local dev), or pass siteKey directly. ' +
+      'This is the PUBLIC site key - the secret key belongs in `wrangler secret put`.',
+  );
+}
+
+// Test keys always pass and must never reach production. `go-live` checks for this too.
+const isTestKey = /^[12]x/.test(siteKey);
+---
+
+<div
+  class="cf-turnstile webm-turnstile"
+  data-sitekey={siteKey}
+  data-action={action}
+  data-theme={theme}
+  data-size={size}
+  data-error-callback="webmTurnstileError"
+>
+</div>
+
+<!--
+  Surfaced failure. Without this the widget fails COMPLETELY silently: if it cannot render —
+  most commonly `110200`, meaning this hostname is not in the widget's Hostname Management —
+  no token is ever minted, the server rejects every submission 403, and the form looks
+  entirely normal. The only symptom in the DOM is a missing iframe, and the only symptom
+  anywhere is a console exception nobody has open.
+
+  A visitor filling this in deserves to be told before they type a message they are about to
+  lose. `hidden` works here because reset.css forces it — see CLAUDE.md Traps.
+-->
+<p class="webm-turnstile__error" role="alert" hidden data-webm-turnstile-error>
+  This form could not load its spam protection, so it cannot be submitted right now. Please reload
+  the page, or contact us another way if the problem continues.
+</p>
+
+{
+  isTestKey && (
+    <p class="webm-turnstile__warning" role="status">
+      Turnstile is using a <strong>test key</strong> — every submission passes. Replace it before
+      launch.
+    </p>
+  )
+}
+
+{
+  /*
+  Defined BEFORE the api.js tag below, and `is:inline` so Astro neither bundles nor defers it.
+  Turnstile resolves `data-error-callback` by name off `window` at the moment it fails, which
+  can be immediately on script load — a module-scoped or deferred function would not exist yet
+  and the failure would go back to being silent.
+*/
+}
+<script is:inline>
+  window.webmTurnstileError = function (code) {
+    /*
+     * The callback receives an error code, not the element that failed. A widget that failed
+     * to render has no iframe, which is what identifies it — and on the overwhelmingly common
+     * single-form page it is simply the only one.
+     */
+    document.querySelectorAll('.webm-turnstile').forEach(function (widget) {
+      if (widget.querySelector('iframe')) return;
+
+      var message =
+        widget.parentNode && widget.parentNode.querySelector('[data-webm-turnstile-error]');
+      if (message) message.hidden = false;
+
+      /*
+       * Disable submit. The server rejects these anyway — this replaces "the button does
+       * nothing" with an explanation, rather than changing whether the form can be sent.
+       */
+      var form = widget.closest('form');
+      if (form) {
+        form
+          .querySelectorAll('button[type="submit"], input[type="submit"]')
+          .forEach(function (button) {
+            button.disabled = true;
+          });
+      }
+    });
+
+    console.error(
+      '[webm] Turnstile failed to render (code ' +
+        code +
+        '). ' +
+        "A 110200 means this hostname is not listed in the widget's Hostname Management.",
+    );
+  };
+</script>
+
+<script is:inline async defer src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script>
+
+<style>
+  @layer webm.components.core {
+    .webm-turnstile {
+      /* Reserve the widget's height so the form does not jump when it loads. */
+      min-block-size: 4.0625rem;
+    }
+
+    .webm-turnstile__warning {
+      margin-block-start: var(--webm-space-2xs);
+      padding: var(--webm-space-2xs) var(--webm-space-xs);
+      border-radius: var(--webm-radius-sm);
+      background-color: var(--webm-surface-alt);
+      color: var(--webm-state-warning);
+      font-size: var(--webm-font-size-xs);
+    }
+
+    .webm-turnstile__error {
+      margin-block-start: var(--webm-space-2xs);
+      padding: var(--webm-space-2xs) var(--webm-space-xs);
+      border-radius: var(--webm-radius-sm);
+      background-color: var(--webm-surface-alt);
+      color: var(--webm-state-danger);
+      font-size: var(--webm-font-size-xs);
+    }
+  }
+</style>

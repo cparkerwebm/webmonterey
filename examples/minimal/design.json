@@ -1,0 +1,9 @@
+{
+  "$schema": "../../schema/design.json",
+  "version": 1,
+  "brand": {
+    "name": "Minimal Example",
+    "voice": "Plain and unadorned. This site exists so CI has something real to build.",
+    "rules": ["Never add a component here to make a page look better. It is a test fixture."]
+  }
+}

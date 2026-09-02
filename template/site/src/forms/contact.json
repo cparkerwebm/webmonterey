@@ -1,0 +1,45 @@
+{
+  "//": "A form definition. Copy this file to add another form; the filename is the form's id, and that id is what lands in the `form` column in D1.",
+  "name": "Contact",
+  "//notify": "WHO GETS THE EMAIL. Ships EMPTY on purpose — an unset recipient is obvious, whereas a placeholder address silently swallows every enquiry. Set this before launch.",
+  "//subject": "TOPIC ONLY. The `[Client Name] ` prefix is added by src/emails/subject.ts from webmonterey.json — do not write it here or it renders twice. {{field}} placeholders interpolate submitted values; an unmatched one becomes empty rather than showing up literally.",
+  "notify": {
+    "to": [],
+    "subject": "New contact enquiry from {{name}}"
+  },
+  "//autoresponse": "THE CONFIRMATION SENT BACK TO THE VISITOR. Omit this whole block to send nothing — that is the default, because an autoresponder that goes out before the client has agreed to its wording is a promise the agency made on their behalf. `subject` is TOPIC ONLY, same as notify.subject: the `[Client Name] ` prefix is added by src/emails/subject.ts. It is sent to the address in the form's `email` field, with Reply-To set to the FIRST notify.to recipient, so a visitor replying reaches a human. It never sends if notify.to is empty.",
+  "autoresponse": {
+    "subject": "We received your enquiry",
+    "body": "Thanks for getting in touch. We have received your message and will get back to you shortly."
+  },
+  "//fields": "Rendered in order. `type` maps to an input type; `required` is enforced server-side, not just in the browser.",
+  "fields": [
+    {
+      "name": "name",
+      "label": "Your name",
+      "type": "text",
+      "required": true,
+      "autocomplete": "name"
+    },
+    {
+      "name": "email",
+      "label": "Email address",
+      "type": "email",
+      "required": true,
+      "autocomplete": "email"
+    },
+    {
+      "name": "phone",
+      "label": "Phone",
+      "type": "tel",
+      "required": false,
+      "autocomplete": "tel"
+    },
+    {
+      "name": "message",
+      "label": "How can we help?",
+      "type": "textarea",
+      "required": true
+    }
+  ]
+}

@@ -1,0 +1,347 @@
+/*
+ * Web animations — no dependencies, and no JavaScript beyond one small observer.
+ *
+ * Three things live here:
+ *
+ *   1. ONE-SHOT ANIMATIONS (.webm-animate) — play once on render, for things that APPEAR: a
+ *      banner, a dialog, a toast. Pure CSS. Works with JavaScript off.
+ *
+ *   2. SCROLL REVEAL (.webm-reveal) — a drop-in class that reveals content as it enters the
+ *      viewport. Needs observe.ts, imported once from base.astro. See that section for why it
+ *      is not the CSS-only `animation-timeline: view()` it used to be.
+ *
+ *   3. NAMED KEYFRAMES (webm-fade-in, webm-slide-in-up, …) that any component can reference
+ *      from its own @layer webm.components.core block. This is how the consent banner, a
+ *      mobile menu, a modal, or a toast animates — reuse these rather than writing new ones.
+ *
+ * BOTH systems respect prefers-reduced-motion, by opposite routes. Section 1 only ever
+ * applies inside `no-preference`, so there is nothing to undo. Section 2 must start from a
+ * hidden state, so it instead forces every element visible under `reduce` — in CSS here and
+ * in observe.ts, which is why both halves are required.
+ *
+ * IMPORTED BY src/styles/global.css, alongside the other stylesheets — nothing to wire up.
+ * It used to be opt-in, documented as an `@import` the client had to add to custom/_index.css,
+ * and the failure mode for forgetting was silent: no error, no warning, build still exits 0,
+ * every rule below simply absent from the output. That is not a choice worth offering.
+ *
+ * Section 2 needs the companion script (observe.ts, imported once from base.astro). Section 1
+ * and the keyframes are pure CSS and work with JavaScript off.
+ */
+
+@layer webm.utilities {
+  /* ======================================================================
+   * 1. ONE-SHOT ANIMATIONS
+   *
+   * Play once on render. For elements that appear — a banner, a dialog, a
+   * dropdown — rather than elements scrolled past.
+   *
+   *   <div class="webm-animate" data-animate="slide-in-up">…</div>
+   *   <div class="webm-animate" data-animate="fade-in" data-speed="slow">…</div>
+   * ==================================================================== */
+
+  @media (prefers-reduced-motion: no-preference) {
+    .webm-animate {
+      animation-duration: var(--webm-animate-duration, var(--webm-duration-normal));
+      animation-timing-function: var(--webm-animate-ease, var(--webm-ease-out));
+      animation-fill-mode: both;
+    }
+
+    .webm-animate:where([data-animate='fade-in']) {
+      animation-name: webm-fade-in;
+    }
+    .webm-animate:where([data-animate='fade-out']) {
+      animation-name: webm-fade-out;
+    }
+
+    .webm-animate:where([data-animate='slide-in-up']) {
+      animation-name: webm-fade-in, webm-slide-in-up;
+    }
+    .webm-animate:where([data-animate='slide-in-down']) {
+      animation-name: webm-fade-in, webm-slide-in-down;
+    }
+    .webm-animate:where([data-animate='slide-in-left']) {
+      animation-name: webm-fade-in, webm-slide-in-left;
+    }
+    .webm-animate:where([data-animate='slide-in-right']) {
+      animation-name: webm-fade-in, webm-slide-in-right;
+    }
+
+    .webm-animate:where([data-animate='slide-out-up']) {
+      animation-name: webm-fade-out, webm-slide-out-up;
+    }
+    .webm-animate:where([data-animate='slide-out-down']) {
+      animation-name: webm-fade-out, webm-slide-out-down;
+    }
+
+    .webm-animate:where([data-animate='scale-in']) {
+      animation-name: webm-fade-in, webm-scale-in;
+    }
+    .webm-animate:where([data-animate='scale-out']) {
+      animation-name: webm-fade-out, webm-scale-out;
+    }
+
+    /* Speed. Overrides the token default above. */
+    .webm-animate:where([data-speed='fast']) {
+      --webm-animate-duration: var(--webm-duration-fast);
+    }
+    .webm-animate:where([data-speed='slow']) {
+      --webm-animate-duration: var(--webm-duration-slow);
+    }
+    .webm-animate:where([data-speed='slower']) {
+      --webm-animate-duration: var(--webm-duration-slower);
+    }
+
+    /* A little overshoot, for things that should feel physical. */
+    .webm-animate:where([data-ease='spring']) {
+      --webm-animate-ease: var(--webm-ease-spring);
+    }
+  }
+
+  /* ======================================================================
+   * 2. SCROLL REVEAL
+   *
+   * Driven by IntersectionObserver (observe.ts), which does nothing but add
+   * `data-reveal-visible` once the element enters the viewport. Everything
+   * below — distance, duration, easing, the reduced-motion and print
+   * overrides — stays here in CSS.
+   *
+   * This replaced an `animation-timeline: view()` implementation. That version
+   * was Chromium-only: Firefox keeps scroll-driven animations behind a flag,
+   * so `.webm-reveal` was a silent no-op for a large share of visitors.
+   *
+   *   <div class="webm-reveal" data-reveal="up">…</div>
+   *   <div class="webm-reveal" data-reveal="blur" data-reveal-delay="150">…</div>
+   *   <ul data-reveal-stagger="80"> <li class="webm-reveal" data-reveal="up">…
+   *
+   * THE `html.js` GUARD IS LOAD-BEARING. Every hidden state is scoped to it,
+   * and the class is set by an inline script in base.astro's <head>. With
+   * JavaScript off — or if the bundle simply fails to load — nothing is ever
+   * hidden, so content and crawlers never face a permanent opacity: 0. That
+   * failure mode is the whole reason a JS reveal needs a guard and a pure-CSS
+   * one does not.
+   * ==================================================================== */
+
+  html.js .webm-reveal {
+    /*
+     * `translate` and `scale` as their own properties, not `transform` — the same choice the
+     * keyframes below make, and for the same reason: a direction and a scale can be driven
+     * independently without one clobbering the other.
+     */
+    transition-property: opacity, translate, scale, filter;
+    transition-duration: var(--webm-reveal-duration);
+    transition-timing-function: var(--webm-reveal-ease);
+    transition-delay: var(--webm-reveal-delay);
+  }
+
+  /* Hidden until the observer marks it visible. */
+  html.js .webm-reveal:not([data-reveal-visible]) {
+    opacity: 0;
+  }
+
+  html.js .webm-reveal:where([data-reveal='up']):not([data-reveal-visible]) {
+    translate: 0 var(--webm-reveal-distance);
+  }
+  html.js .webm-reveal:where([data-reveal='down']):not([data-reveal-visible]) {
+    translate: 0 calc(var(--webm-reveal-distance) * -1);
+  }
+
+  /* `left` enters travelling leftwards, so it starts out to the right. */
+  html.js .webm-reveal:where([data-reveal='left']):not([data-reveal-visible]) {
+    translate: calc(var(--webm-reveal-distance) * 2) 0;
+  }
+  html.js .webm-reveal:where([data-reveal='right']):not([data-reveal-visible]) {
+    translate: calc(var(--webm-reveal-distance) * -2) 0;
+  }
+
+  html.js .webm-reveal:where([data-reveal='scale']):not([data-reveal-visible]) {
+    scale: 0.94;
+  }
+  html.js .webm-reveal:where([data-reveal='zoom-out']):not([data-reveal-visible]) {
+    scale: 1.06;
+  }
+  html.js .webm-reveal:where([data-reveal='blur']):not([data-reveal-visible]) {
+    filter: blur(var(--webm-reveal-blur));
+  }
+
+  /*
+   * The visible state is written out rather than left to inherited defaults, so an element
+   * revealing inside an already-transformed parent lands where you expect.
+   */
+  html.js .webm-reveal[data-reveal-visible] {
+    opacity: 1;
+    translate: none;
+    scale: none;
+    filter: none;
+  }
+
+  /*
+   * Stagger. `--webm-reveal-index` is set per child by observe.ts; the step comes from
+   * `data-reveal-stagger` on the container, defaulting to --webm-reveal-stagger-step.
+   *
+   * This is the part the old scroll-driven version could not express. Its delays came from
+   * `animation-range-start`, which meant a fixed four-step ladder — `animation-delay` is
+   * time-based and has no effect on a scroll-driven animation at all. A transition has no
+   * such restriction, so the step is real milliseconds and the count is unbounded.
+   */
+  /*
+   * DESCENDANT, NOT `>`. This was `> .webm-reveal`, which paired with observe.ts numbering only
+   * direct children: markup that nests the revealing element one level deeper - <ul> <li>
+   * <button>, or a card wrapper that holds its border still - got no index and no delay, so the
+   * group arrived at once and looked like a stagger that had never been applied. Both halves had
+   * to change together; an index nothing reads is as useless as a rule with no index.
+   *
+   * Nesting still resolves without extra specificity, because neither value is inherited from
+   * this rule: --webm-reveal-stagger-step is an inline property on each container, so an inner
+   * one shadows an outer one for its subtree, and --webm-reveal-index is written per element by
+   * observe.ts, which numbers each element under its NEAREST container.
+   */
+  html.js [data-reveal-stagger] .webm-reveal {
+    --webm-reveal-delay: calc(var(--webm-reveal-stagger-step) * var(--webm-reveal-index, 0));
+  }
+
+  /* Convenience aliases, kept so the documented `data-delay` ladder still works. */
+  html.js .webm-reveal:where([data-delay='1']) {
+    --webm-reveal-delay: calc(var(--webm-reveal-stagger-step) * 1);
+  }
+  html.js .webm-reveal:where([data-delay='2']) {
+    --webm-reveal-delay: calc(var(--webm-reveal-stagger-step) * 2);
+  }
+  html.js .webm-reveal:where([data-delay='3']) {
+    --webm-reveal-delay: calc(var(--webm-reveal-stagger-step) * 3);
+  }
+  html.js .webm-reveal:where([data-delay='4']) {
+    --webm-reveal-delay: calc(var(--webm-reveal-stagger-step) * 4);
+  }
+
+  /*
+   * Reduced motion. Only half the fix — observe.ts also reveals every element immediately, so
+   * a motion-sensitive visitor never has to scroll to make content appear. Both halves are
+   * required; neutralising the CSS alone would leave content gated on scroll position.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    html.js .webm-reveal,
+    html.js .webm-reveal:not([data-reveal-visible]) {
+      opacity: 1 !important;
+      translate: none !important;
+      scale: none !important;
+      filter: none !important;
+      transition: none !important;
+    }
+  }
+
+  /*
+   * Print. Only elements scrolled past carry `data-reveal-visible`, so printing a long page
+   * would otherwise emit blank space wherever the reader had not been. Same for save-as-PDF
+   * and full-page screenshots.
+   */
+  @media print {
+    html.js .webm-reveal,
+    html.js .webm-reveal:not([data-reveal-visible]) {
+      opacity: 1 !important;
+      translate: none !important;
+      scale: none !important;
+      filter: none !important;
+      transition: none !important;
+    }
+  }
+
+  /* ======================================================================
+   * 3. KEYFRAMES
+   *
+   * Deliberately outside the reduced-motion guard: they are inert until
+   * something references them, and components reference them directly.
+   * Movement uses `translate`/`scale` rather than `transform` so two
+   * animations can drive position and scale independently without one
+   * clobbering the other.
+   * ==================================================================== */
+
+  @keyframes webm-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes webm-fade-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes webm-slide-in-up {
+    from {
+      translate: 0 var(--webm-slide-distance, var(--webm-space-lg));
+    }
+    to {
+      translate: 0 0;
+    }
+  }
+
+  @keyframes webm-slide-in-down {
+    from {
+      translate: 0 calc(var(--webm-slide-distance, var(--webm-space-lg)) * -1);
+    }
+    to {
+      translate: 0 0;
+    }
+  }
+
+  @keyframes webm-slide-in-left {
+    from {
+      translate: calc(var(--webm-slide-distance, var(--webm-space-lg)) * -1) 0;
+    }
+    to {
+      translate: 0 0;
+    }
+  }
+
+  @keyframes webm-slide-in-right {
+    from {
+      translate: var(--webm-slide-distance, var(--webm-space-lg)) 0;
+    }
+    to {
+      translate: 0 0;
+    }
+  }
+
+  @keyframes webm-slide-out-up {
+    from {
+      translate: 0 0;
+    }
+    to {
+      translate: 0 calc(var(--webm-slide-distance, var(--webm-space-lg)) * -1);
+    }
+  }
+
+  @keyframes webm-slide-out-down {
+    from {
+      translate: 0 0;
+    }
+    to {
+      translate: 0 var(--webm-slide-distance, var(--webm-space-lg));
+    }
+  }
+
+  @keyframes webm-scale-in {
+    from {
+      scale: 0.94;
+    }
+    to {
+      scale: 1;
+    }
+  }
+
+  @keyframes webm-scale-out {
+    from {
+      scale: 1;
+    }
+    to {
+      scale: 0.94;
+    }
+  }
+}

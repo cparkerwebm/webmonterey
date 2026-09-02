@@ -1,0 +1,73 @@
+---
+/*
+ * Google Tag Manager.
+ *
+ * Renders nothing unless an ID is passed, so it is safe to leave in the layout on every site
+ * whether or not the client uses GTM.
+ *
+ * USAGE — in src/layouts/base.astro:
+ *
+ *   ---
+ *   import TagManager from '../includes/google/tag-manager/TagManager.astro';
+ *   ---
+ *   <head>
+ *     <TagManager id={Astro.locals.gtmId} />       <- or a value from wrangler vars
+ *   </head>
+ *   <body>
+ *     <TagManager id={...} noscript />             <- immediately after <body>
+ *
+ * The container ID is PUBLIC — it belongs in `vars` in wrangler.jsonc, not in secrets.
+ *
+ * Placement matters: the script must be in <head>, and the <noscript> iframe must be the
+ * first thing inside <body>. GTM misbehaves otherwise.
+ */
+interface Props {
+  /** GTM container ID, `GTM-XXXXXXX`. Renders nothing when empty. */
+  id?: string;
+  /** Render the <noscript> iframe variant instead of the script. */
+  noscript?: boolean;
+}
+
+const { id, noscript = false } = Astro.props;
+
+// A malformed ID silently breaks tracking, so fail visibly at build instead. This check also
+// makes the interpolation below safe: only /^GTM-[A-Z0-9]+$/ can reach the script body.
+if (id && !/^GTM-[A-Z0-9]+$/.test(id)) {
+  throw new Error(
+    `[webm] Invalid GTM container ID "${id}". Expected the form GTM-XXXXXXX. ` +
+      `A Google Analytics measurement ID (G-XXXXXXX) is not the same thing.`,
+  );
+}
+
+/*
+ * Built as a string in frontmatter, then injected with `set:html`.
+ *
+ * Two things had to be avoided. Putting the raw JS inside a <script> in a JSX expression is
+ * what Astro actually wants, but Prettier's Astro parser cannot parse the braces and fails
+ * the file. Wrapping the JS in {`...`} instead makes Prettier happy and emits the braces and
+ * backticks LITERALLY — the browser reads a block statement containing a discarded string,
+ * so there is no error, no request, and no analytics at all.
+ *
+ * `set:html` on its own sidesteps both. Do NOT add `define:vars` alongside it — that
+ * combination makes Astro emit an empty script body.
+ */
+const snippet = id
+  ? `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${id}');`
+  : null;
+---
+
+{snippet && !noscript && <script is:inline set:html={snippet} />}
+
+{
+  id && noscript && (
+    <noscript>
+      <iframe
+        src={`https://www.googletagmanager.com/ns.html?id=${id}`}
+        height="0"
+        width="0"
+        style="display:none;visibility:hidden"
+        title="Google Tag Manager"
+      />
+    </noscript>
+  )
+}

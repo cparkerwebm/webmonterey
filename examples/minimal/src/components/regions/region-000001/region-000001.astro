@@ -1,0 +1,22 @@
+---
+/*
+ * The site footer, carrying the agency credit.
+ *
+ * Exists in this example so the built output can be asserted: the credit link must open in a new
+ * tab, and that is only observable in dist/, not in a unit test.
+ */
+import Credit from '@cparkerwebm/webmonterey/webmonterey/credits/Credit.astro';
+---
+
+<footer class="webm-footer">
+  <Credit />
+</footer>
+
+<style>
+  @layer webm.components.core {
+    .webm-footer {
+      padding-block: var(--webm-space-lg);
+      border-block-start: var(--webm-border-width-1) solid var(--webm-border-subtle);
+    }
+  }
+</style>

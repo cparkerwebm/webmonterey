@@ -1,0 +1,209 @@
+---
+import { copy } from '../copy.ts';
+/*
+ * Back-to-top control — a circular progress ring that fills 0→100% with scroll depth,
+ * wrapping an up arrow. Fixed to the bottom-right.
+ *
+ * The ring is a conic-gradient driven by ONE custom property, --webm-scroll-progress, which
+ * the script updates. No SVG, no stroke-dasharray maths, no per-frame layout.
+ *
+ * Progress is tracked with a scroll listener throttled to requestAnimationFrame — unlike the
+ * show/hide case, a ring genuinely needs a continuous value, so IntersectionObserver cannot
+ * do the job. The handler is passive and does one style write per frame at most.
+ *
+ * Where scroll-driven animations are supported the ring is driven natively by
+ * `animation-timeline: scroll()` instead, with zero JavaScript; the script is the fallback
+ * and stands down when CSS is handling it.
+ *
+ * USAGE — near the end of <body> in the layout:
+ *
+ *   <ScrollTop />
+ */
+interface Props {
+  /** Accessible name. */
+  label?: string;
+  /** Hide the control until the visitor has scrolled this fraction of the page (0–1). */
+  revealAfter?: number;
+}
+
+const { label = copy.scrollTop.label, revealAfter = 0.15 } = Astro.props;
+---
+
+<!--
+  href="#top" is a browser-defined special case that scrolls to the top of the DOCUMENT and
+  needs no matching element. Do NOT point this at #webm-main: once a site has a header above
+  <main>, "Back to top" would land the visitor below it, hijack the skip link's target, and
+  push a hash into history.
+-->
+<a class="webm-scroll-top" href="#top" data-reveal-after={revealAfter} aria-label={label} hidden>
+  <span class="webm-scroll-top__ring" aria-hidden="true"></span>
+  <svg
+    class="webm-scroll-top__icon"
+    viewBox="0 0 24 24"
+    width="18"
+    height="18"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <path
+      d="M12 19V5M5 12l7-7 7 7"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"></path>
+  </svg>
+</a>
+
+<style>
+  @layer webm.components.core {
+    .webm-scroll-top {
+      /* 0 → 1. Read by the conic-gradient below. */
+      --webm-scroll-progress: 0;
+      --webm-scroll-size: 3rem;
+      --webm-scroll-ring-width: 3px;
+
+      position: fixed;
+      inset-block-end: var(--webm-space-md);
+      inset-inline-end: var(--webm-space-md);
+      z-index: var(--webm-z-sticky);
+
+      display: grid;
+      place-items: center;
+      inline-size: var(--webm-scroll-size);
+      block-size: var(--webm-scroll-size);
+
+      color: var(--webm-action);
+      background-color: var(--webm-surface-raised);
+      border-radius: var(--webm-radius-circle);
+      box-shadow: var(--webm-shadow-md);
+
+      transition:
+        opacity var(--webm-duration-normal) var(--webm-ease-out),
+        translate var(--webm-duration-normal) var(--webm-ease-out);
+    }
+
+    /* Entry state the script sets for one frame, so the reveal has something to animate to. */
+    .webm-scroll-top:where([data-entering]) {
+      opacity: 0;
+      translate: 0 var(--webm-space-sm);
+    }
+
+    /*
+     * The ring. A conic-gradient hard-stops at the progress angle: filled in --webm-action,
+     * unfilled in a muted track. `mask` punches out the middle so only a ring remains —
+     * cheaper and sharper than an SVG circle, and it animates on the compositor.
+     */
+    .webm-scroll-top__ring {
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: conic-gradient(
+        from 0deg,
+        var(--webm-action) calc(var(--webm-scroll-progress) * 360deg),
+        var(--webm-border-subtle) 0
+      );
+      mask: radial-gradient(
+        closest-side,
+        transparent calc(100% - var(--webm-scroll-ring-width)),
+        black calc(100% - var(--webm-scroll-ring-width))
+      );
+    }
+
+    .webm-scroll-top__icon {
+      /* Above the ring, and nudged optically rather than mathematically centred. */
+      position: relative;
+    }
+
+    .webm-scroll-top:hover {
+      color: var(--webm-action-dark);
+    }
+
+    /*
+     * Preferred path: drive the ring from the scroll timeline itself — no JavaScript at all.
+     * The script detects this support and stops updating the property.
+     */
+    @supports (animation-timeline: scroll()) {
+      .webm-scroll-top__ring {
+        animation: webm-scroll-ring linear both;
+        animation-timeline: scroll(root block);
+      }
+    }
+  }
+
+  @keyframes webm-scroll-ring {
+    from {
+      --webm-scroll-progress: 0;
+    }
+    to {
+      --webm-scroll-progress: 1;
+    }
+  }
+</style>
+
+<!--
+  Registering the custom property is what makes --webm-scroll-progress ANIMATABLE. Without
+  @property it is an untyped token that jumps 0 → 1 with no interpolation, so the CSS-driven
+  ring would snap rather than sweep. It has to live outside the scoped <style> block because
+  @property is always global.
+-->
+<style is:global>
+  @property --webm-scroll-progress {
+    syntax: '<number>';
+    inherits: false;
+    initial-value: 0;
+  }
+</style>
+
+<script>
+  const button = document.querySelector<HTMLAnchorElement>('.webm-scroll-top');
+
+  if (button) {
+    const revealAfter = Number(button.dataset.revealAfter ?? '0.15');
+
+    // If CSS can drive the ring from the scroll timeline, JS only handles show/hide.
+    const cssDrivesRing = CSS.supports('animation-timeline', 'scroll()');
+
+    let ticking = false;
+
+    const update = () => {
+      ticking = false;
+
+      const doc = document.documentElement;
+      const scrollable = doc.scrollHeight - doc.clientHeight;
+
+      // A page shorter than the viewport has nothing to scroll: never show the control.
+      if (scrollable <= 0) {
+        if (!button.hidden) button.hidden = true;
+        return;
+      }
+
+      const progress = Math.min(Math.max(doc.scrollTop / scrollable, 0), 1);
+
+      if (!cssDrivesRing) {
+        button.style.setProperty('--webm-scroll-progress', String(progress));
+      }
+
+      const shouldShow = progress > revealAfter;
+
+      if (shouldShow && button.hidden) {
+        button.hidden = false;
+        button.setAttribute('data-entering', '');
+        // Next frame, drop the attribute so the transition has a target to run to.
+        requestAnimationFrame(() => button.removeAttribute('data-entering'));
+      } else if (!shouldShow && !button.hidden) {
+        button.hidden = true;
+      }
+    };
+
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(update);
+    };
+
+    addEventListener('scroll', onScroll, { passive: true });
+    addEventListener('resize', onScroll, { passive: true });
+    update();
+  }
+</script>
