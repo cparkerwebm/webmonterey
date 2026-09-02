@@ -33,6 +33,7 @@ import { domain, hasDomain } from '../includes/webmonterey/site.ts';
 import { compact, renderJsonLd } from '../includes/webmonterey/structured-data/nodes.ts';
 import { pageHeader } from 'virtual:webm/registry';
 import ogImage from 'virtual:webm/webmaster-og';
+import build from 'virtual:webm/build';
 
 const PageHeader = pageHeader;
 const text = copy.webmaster;
@@ -43,7 +44,8 @@ const agencyHref = hasDomain ? creditUrl(domain, 'website') : AGENCY.url;
  * and the site's own structured data use. Until `domain` is set there is no page @id to claim.
  */
 let jsonLd: string | null = null;
-if (Astro.site) {
+/* No graph on a preview: the page is noindex there and an @id on a workers.dev host is noise. */
+if (Astro.site && !build.preview) {
   const url = new URL(Astro.url.pathname, Astro.site).href;
   jsonLd = renderJsonLd([
     compact({

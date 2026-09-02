@@ -44,8 +44,13 @@ const check = (name, ok, detail = '') => {
   console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${name}${ok || !detail ? '' : `\n         ${detail}`}`);
   if (!ok) failures.push(name);
 };
-const run = (cmd, args, cwd, quiet = true) =>
-  execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: quiet ? 'pipe' : 'inherit' });
+const run = (cmd, args, cwd, quiet = true, env = {}) =>
+  execFileSync(cmd, args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: quiet ? 'pipe' : 'inherit',
+    env: { ...process.env, ...env },
+  });
 
 const work = mkdtempSync(join(tmpdir(), 'webm-e2e-'));
 console.log(`e2e in ${work}\n`);
@@ -222,6 +227,23 @@ try {
     'design.json retints the action token',
     /--webm-action:\s*#123456/.test(css),
     'the palette override never compiled into the token layer',
+  );
+
+  /*
+   * A BRANCH PREVIEW BUILD. Workers Builds injects WORKERS_CI_BRANCH; anything but the production
+   * branch is a preview, and a preview must be impossible to index and invisible to analytics.
+   * Built last, so nothing above was measured against it.
+   */
+  console.log('preview build (WORKERS_CI_BRANCH=feature/x)…');
+  run('npx', ['astro', 'build'], site, true, { WORKERS_CI_BRANCH: 'feature/x' });
+  const previewIndex = read('index.html');
+  check('every page on a preview is noindex', /name="robots" content="noindex/.test(previewIndex));
+  check('a preview page emits no canonical', !/rel="canonical"/.test(previewIndex));
+  check('a preview has no sitemap', !existsSync(join(dist, 'sitemap-index.xml')));
+  check('a preview robots.txt disallows everything', /Disallow: \/\s*$/m.test(read('robots.txt')));
+  check(
+    'the webmaster page on a preview carries no agency graph',
+    !read('webmaster/index.html').includes('#organization'),
   );
 
   console.log('webm doctor…');

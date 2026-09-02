@@ -119,5 +119,9 @@ Workers Builds comments the preview URL on every PR - that is the client's revie
 hostnames use the slug, so Chrome's lookalike warning should not appear; if it does, it is a
 URL-shape false positive and **Ignore is safe**.
 
+A preview build is safe to hand out: every page is noindex, there is no sitemap, robots.txt
+disallows everything, analytics does not load, and mail is redirected to `stagingEmail`. The
+client can click anything. The production branch is `main`; anything else previews.
+
 Next: `/webm:new-component` for each block, then `/webm:launch` when the site is
 content-complete and approved on a preview.

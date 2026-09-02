@@ -305,6 +305,17 @@ Mailgun's test mode would verify the API call and nothing about the rendering.
 **There is no default inbox.** A staging site with no `stagingEmail` throws rather than mailing
 the real recipients, and doctor fails it before anyone submits a form.
 
+### Branch previews are a different build
+
+Workers Builds deploys every pushed branch to `<branch>-<worker>.<account>.workers.dev` and
+comments the URL on the PR — that is the client's review link, and it is sold as a feature. It is
+also a public URL of a copy of the site, so the package treats any branch other than the
+production one (`main`, or `productionBranch` on the integration; detected from the
+`WORKERS_CI_BRANCH` Workers Builds injects) as a **preview build**: every page noindex with no
+canonical, no sitemap, `robots.txt` disallows everything, GTM does not load, and `/webmaster`
+emits no graph. Together with the `workers.dev` mail redirect, a preview can be handed to a
+client with nothing to warn them about. A local build has no branch and is production.
+
 ---
 
 ## 9. Structured data: parts, not a verdict

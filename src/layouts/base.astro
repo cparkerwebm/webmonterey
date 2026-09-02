@@ -35,6 +35,7 @@ import {
 import { header, footer, panels, structuredData } from 'virtual:webm/registry';
 import measuredShareImage from 'virtual:webm/share-image';
 import icons from 'virtual:webm/icons';
+import build from 'virtual:webm/build';
 
 /*
  * Site-wide plumbing, wired in once here rather than per page.
@@ -164,7 +165,7 @@ const {
   title,
   description,
   brandTitle = brandTitles,
-  noindex = false,
+  noindex: noindexProp = false,
   shareImage = '/opengraph.png',
   /*
    * MEASURED, not assumed. Both default to the real size of public/opengraph.png, read from the
@@ -180,6 +181,17 @@ const {
   structuredData: renderStructuredData = true,
   scrollTop = true,
 } = Astro.props;
+
+/*
+ * A BRANCH PREVIEW IS NOINDEX, EVERY PAGE. The review link a client gets is a public workers.dev
+ * URL, and a search engine that finds one indexes a duplicate of the site under the wrong
+ * hostname. noindex also suppresses the canonical and og:url below, so the preview sends one
+ * signal rather than "do not index me" beside "my real address is over there". GTM is skipped on
+ * a preview for the same reason in the other direction: a client clicking through their review
+ * link must not show up in their own analytics.
+ */
+const noindex = noindexProp || build.preview;
+const analyticsOn = analytics && !build.preview;
 
 /*
  * Canonical URL. Only emitted once `site` is derived from `domain` in webmonterey.json.
@@ -272,7 +284,7 @@ const StructuredData = structuredData;
 
     <!-- FIRST. Sets consent state and Consent Mode defaults before any third party loads. -->
     <ConsentInit />
-    {analytics && gtmId && <TagManager id={gtmId} />}
+    {analyticsOn && gtmId && <TagManager id={gtmId} />}
 
     {
       /*
@@ -371,7 +383,7 @@ const StructuredData = structuredData;
     <a class="webm-skip-link" href="#webm-main">Skip to content</a>
 
     <!-- GTM's noscript iframe must be the first thing in <body>. -->
-    {analytics && gtmId && <TagManager id={gtmId} noscript />}
+    {analyticsOn && gtmId && <TagManager id={gtmId} noscript />}
 
     <slot name="header">{Header && <Header />}</slot>
 

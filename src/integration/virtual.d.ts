@@ -4,6 +4,15 @@
  * These do not exist on disk. Each resolves at build time to something in the CLIENT repo, which
  * a package cannot import relatively - see includes/webmonterey/config.ts.
  */
+/**
+ * What this build is FOR. `preview` is true on any Workers Builds branch other than the
+ * production one - every page noindex, no sitemap, no analytics. A local build is not a preview.
+ */
+declare module 'virtual:webm/build' {
+  const build: { preview: boolean; branch: string | null };
+  export default build;
+}
+
 declare module 'virtual:webm/site' {
   import type { SiteConfig } from '../includes/webmonterey/config.ts';
   const config: SiteConfig;

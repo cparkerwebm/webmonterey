@@ -134,6 +134,15 @@ _Worker_, not a _version_, so it can only serve production, and per-version prev
 **`workers_dev: false` does NOT disable preview URLs.** Separate switches, which is why
 wrangler.jsonc sets both explicitly.
 
+**A branch preview is a different build, on purpose.** Workers Builds injects
+`WORKERS_CI_BRANCH`; on any branch but the production one (`main`, or the integration's
+`productionBranch`) every page is noindex with no canonical, there is no sitemap, `robots.txt`
+disallows everything, GTM does not load, and the `/webmaster` page emits no graph. Email is
+already redirected by the `workers.dev` hostname. So a client's review link can neither be
+indexed nor show up in their analytics. **A local build is not a preview** - `npm run preview`
+builds production, which is what you want to inspect. To see the preview shape locally:
+`WORKERS_CI_BRANCH=x npm run build`.
+
 **`wrangler deployments list` misleads twice.** `Source: Unknown (deployment)` appears even for
 Workers Builds deployments — it describes the author, not the origin. And the list pages at 10
 entries, so "has the count gone up?" can never become a way of waiting for a deploy.

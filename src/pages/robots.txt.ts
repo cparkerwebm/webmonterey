@@ -21,8 +21,20 @@
  * before concluding the file has been overwritten.
  */
 import type { APIRoute } from 'astro';
+import build from 'virtual:webm/build';
 
 export const GET: APIRoute = ({ site }) => {
+  /*
+   * A BRANCH PREVIEW DISALLOWS EVERYTHING. Every page on a preview is already noindex; this is
+   * the belt to that brace, and it is the one place Disallow is right - there is nothing on a
+   * preview a crawler should ever fetch, and no noindex tag it needs to see.
+   */
+  if (build.preview) {
+    return new Response('User-agent: *\nDisallow: /\n', {
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+  }
+
   const lines = ['User-agent: *', 'Allow: /'];
 
   /*

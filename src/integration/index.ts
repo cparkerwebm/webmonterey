@@ -76,9 +76,19 @@ export interface WebmontereyOptions {
    * footer should drop the credit too, and the agreement should say so.
    */
   webmaster?: boolean;
+  /**
+   * The branch Workers Builds deploys to production. Default `main`.
+   *
+   * Every other branch is a PREVIEW, and a preview build is different on purpose: every page is
+   * noindex, there is no sitemap, robots.txt disallows everything, and Google Tag Manager does
+   * not load - so a client's review link can never be indexed, and clicking around it never
+   * lands in their analytics. Detected from WORKERS_CI_BRANCH, which Workers Builds injects.
+   */
+  productionBranch?: string;
 }
 
 const VIRTUAL = {
+  build: 'virtual:webm/build',
   site: 'virtual:webm/site',
   design: 'virtual:webm/design',
   tokens: 'virtual:webm/tokens.css',
@@ -121,6 +131,17 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
         const site = resolveSiteUrl(files.site);
         const app = appEnabled(files.site);
         const appPath = resolveAppPath(files.site);
+
+        /*
+         * BRANCH PREVIEW OR PRODUCTION. Workers Builds injects WORKERS_CI_BRANCH; anything that
+         * is not the production branch is a preview. A local build has no branch and is treated
+         * as production, which is what `npm run preview` and the e2e need. See the option.
+         */
+        const branch = process.env.WORKERS_CI_BRANCH ?? null;
+        const preview = branch !== null && branch !== (options.productionBranch ?? 'main');
+        if (preview) {
+          logger.info(`branch "${branch}" is a preview: noindex, no sitemap, no analytics`);
+        }
 
         /*
          * Editing either config file must rebuild. Without this a palette change in design.json
@@ -176,7 +197,7 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
           output: 'static',
 
           integrations:
-            site && options.sitemap !== false
+            site && !preview && options.sitemap !== false
               ? [
                   sitemap({
                     filter: (page) => {
@@ -233,6 +254,8 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
                 },
                 load(id: string) {
                   switch (id) {
+                    case resolved(VIRTUAL.build):
+                      return `export default ${JSON.stringify({ preview, branch })};`;
                     case resolved(VIRTUAL.site):
                       return `export default ${JSON.stringify(files.site)};`;
                     case resolved(VIRTUAL.design):

@@ -28,6 +28,13 @@ build. See `/webm:upgrade`.
   and a sitemap that is missing, unadvertised, or lists a page that was not built. External links
   are probed and reported as warnings. `/webm:launch` runs it and says how to act on each finding.
 
+- **Branch previews are a different build.** On any Workers Builds branch other than the
+  production one (`main`, or `productionBranch` on the integration), every page is noindex with
+  no canonical, there is no sitemap, `robots.txt` disallows everything, Google Tag Manager does
+  not load, and `/webmaster` emits no graph. Detected from the `WORKERS_CI_BRANCH` variable
+  Workers Builds injects; a local build is production. Mail on previews was already redirected by
+  the `workers.dev` hostname. Nothing to do on a site.
+
 - **`/webm:launch` asks two questions out loud** before the flip: is Google Tag Manager
   configured and published for this site, and has the launch annotation been added in Google
   Analytics. Neither is knowable from the repo, so the skill waits for the answer.
