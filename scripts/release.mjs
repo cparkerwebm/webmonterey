@@ -151,7 +151,7 @@ if (DRY) {
   DRY RUN. Everything above passed. A real run would now:
 
     npm version ${next}          commit "v${next}" and tag v${next}
-    npm publish --provenance     (prepublishOnly re-checks changelog, tag and tree)
+    npm publish                  (--provenance in CI only; prepublishOnly re-checks changelog, tag and tree)
     git push origin main && git push origin v${next}
                                  then read both back off origin
     gh release create v${next}   with the changelog section as its notes
@@ -195,12 +195,14 @@ if (next === current) {
 step('Publishing');
 /*
  * --provenance signs an attestation linking the tarball to this repo and commit, which npmjs
- * shows on the package page. It needs a CI OIDC token to sign with; from a laptop npm emits a
- * warning and publishes without it rather than failing, so the flag is safe either way. `access`
- * is `public` in package.json - a scoped package defaults to restricted otherwise.
+ * shows on the package page. It needs a CI OIDC token to sign with, and from a laptop npm
+ * REFUSES rather than warns ("not supported for provider: null") - which is how 1.0.0's first
+ * attempt ended. So the flag goes on only where it can work. `access` is `public` in
+ * package.json - a scoped package defaults to restricted otherwise.
  */
+const provenance = process.env.GITHUB_ACTIONS ? ['--provenance'] : [];
 try {
-  run('npm', ['publish', '--provenance'], { stdio: 'inherit' });
+  run('npm', ['publish', ...provenance], { stdio: 'inherit' });
 } catch {
   die(
     `Publish failed. The commit and tag v${next} exist locally and have NOT been pushed.\n` +
