@@ -11,6 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sync } from './sync.ts';
+import { DENY_RULES, STALE_RULES } from './settings.ts';
 
 const site = () => mkdtempSync(join(tmpdir(), 'webm-sync-'));
 
@@ -134,4 +135,64 @@ test('the migrations README rides along, so the --remote trap is documented in t
   const dir = site();
   sync(dir);
   assert.match(readFileSync(join(dir, 'migrations', 'README.md'), 'utf8'), /--remote/);
+});
+
+test('the package deny rules are MERGED into .claude/settings.json, never replacing it', () => {
+  const dir = site();
+  mkdirSync(join(dir, '.claude'), { recursive: true });
+  const path = join(dir, '.claude/settings.json');
+  writeFileSync(
+    path,
+    JSON.stringify({
+      '//': 'theirs',
+      enabledMcpjsonServers: ['astro-docs'],
+      permissions: {
+        allow: ['Bash(npm run *)'],
+        deny: ['Read(**/.env)', 'Write(**/.env)', 'Edit(/secrets/**)'],
+      },
+    }),
+  );
+
+  const first = sync(dir);
+  const written = JSON.parse(readFileSync(path, 'utf8'));
+  assert.ok(first.settings.added.includes('Edit(**/node_modules/**)'), 'rule 12 lands');
+  assert.deepEqual(first.settings.removed, ['Write(**/.env)'], 'the rule Claude Code warns about');
+  assert.equal(written['//'], 'theirs');
+  assert.deepEqual(written.enabledMcpjsonServers, ['astro-docs'], 'not touched by this');
+  assert.deepEqual(
+    written.permissions.allow,
+    ['Bash(npm run *)'],
+    "the site's allow list survives",
+  );
+  assert.ok(written.permissions.deny.includes('Edit(/secrets/**)'), "the site's own deny survives");
+  for (const rule of DENY_RULES) assert.ok(written.permissions.deny.includes(rule), rule);
+  for (const rule of STALE_RULES) assert.ok(!written.permissions.deny.includes(rule), rule);
+  assert.equal(
+    written.permissions.deny.filter((r: string) => r === 'Read(**/.env)').length,
+    1,
+    'a rule already there is not doubled',
+  );
+
+  /* Idempotent: the second pass reports nothing and rewrites nothing. */
+  const before = readFileSync(path, 'utf8');
+  const second = sync(dir);
+  assert.deepEqual(second.settings, { added: [], removed: [], created: false, skipped: null });
+  assert.equal(readFileSync(path, 'utf8'), before);
+});
+
+test('a site with no settings file gets the scaffold defaults', () => {
+  const dir = site();
+  const result = sync(dir);
+  assert.equal(result.settings.created, true);
+  const written = JSON.parse(readFileSync(join(dir, '.claude/settings.json'), 'utf8'));
+  assert.deepEqual(written.permissions.deny, [...DENY_RULES]);
+});
+
+test('a settings file that will not parse is left alone and reported', () => {
+  const dir = site();
+  mkdirSync(join(dir, '.claude'), { recursive: true });
+  writeFileSync(join(dir, '.claude/settings.json'), '{ not json');
+  const result = sync(dir);
+  assert.ok(result.settings.skipped);
+  assert.equal(readFileSync(join(dir, '.claude/settings.json'), 'utf8'), '{ not json');
 });

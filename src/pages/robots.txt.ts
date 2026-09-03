@@ -25,9 +25,11 @@ import build from 'virtual:webm/build';
 
 export const GET: APIRoute = ({ site }) => {
   /*
-   * A BRANCH PREVIEW DISALLOWS EVERYTHING. Every page on a preview is already noindex; this is
-   * the belt to that brace, and it is the one place Disallow is right - there is nothing on a
-   * preview a crawler should ever fetch, and no noindex tag it needs to see.
+   * A PREVIEW DISALLOWS EVERYTHING - a staging site on any hostname, or a non-production branch
+   * of a launched one (isPreviewBuild in includes/webmonterey/config.ts). Every page on a preview
+   * is already noindex; this is the belt to that brace, and it is the one place Disallow is
+   * right - there is nothing on a preview a crawler should ever fetch, and no noindex tag it
+   * needs to see.
    */
   if (build.preview) {
     return new Response('User-agent: *\nDisallow: /\n', {

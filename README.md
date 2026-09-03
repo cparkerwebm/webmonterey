@@ -20,6 +20,12 @@ the reset, the Cloudflare includes, the consent system, the form pipeline, the r
 It ships **zero visible components**. Every block a visitor sees is built per client, in that
 client's repo. Every default has a documented way to opt out of it.
 
+**The package is edited in this repo, and only here.** A session in a client site that finds a
+package bug does not reach into `node_modules` or into this checkout; its deliverable is a
+description of the fix, run later in a session opened here, and the site takes the result with
+`npm update`. That is rule 12 of the site's `CLAUDE.md`, with an `Edit` deny on `node_modules`
+behind it that `webm sync` keeps in place. The inverse holds: nothing here edits a client site.
+
 ## Creating a client site
 
 ```sh

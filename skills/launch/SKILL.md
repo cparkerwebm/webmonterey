@@ -211,13 +211,21 @@ In one change:
 "launched": "YYYY-MM-DD"
 ```
 
+**This flip is also what makes the site indexable, so it happens here and not before.** While
+`environment` says `staging`, every build is a preview - every page noindex with no canonical,
+no sitemap, robots.txt disallowing everything, no Google Tag Manager - on every hostname, `main`
+included. Flip it before the custom domain is live and the `workers.dev` copy is what gets
+indexed.
+
 Until `environment` flips, every message the site sends is redirected to `stagingEmail` - correct
 right up to the moment the domain is attached and wrong immediately after: the form keeps saying
 thank you, the client's inbox stays empty, and the first anyone hears of it is a customer asking
-why nobody called back. `webm doctor` fails a launched site still declared staging, which is why
-both fields change together.
+why nobody called back. And a launched site left on `staging` is invisible to search: every page
+noindex, no sitemap, `Disallow: /`. `webm doctor` fails a launched site still declared staging,
+which is why both fields change together.
 
-Anything served from `workers.dev` is still treated as staging whatever this says, so branch
-previews of the live site keep redirecting. That is deliberate.
+Anything served from `workers.dev` is still treated as staging for MAIL whatever this says, and
+any branch other than `main` still builds as a preview, so branch previews of the live site keep
+redirecting and stay out of the index. That is deliberate.
 
 Commit, push, and confirm the deploy. Then run `npx webm doctor` one last time: zero failures.

@@ -14,7 +14,8 @@ The relationship is a WordPress parent theme and child theme.
 
 **A fix to the package reaches this site on `npm update`.** That is the entire point of the
 package existing, and it is why the default answer to "the shared behavior is wrong" is to fix
-it upstream rather than to work around it here.
+it upstream rather than to work around it here. Upstream means the package's own repo, in a
+session opened there — never from here. Rule 12 says what a session in this repo does instead.
 
 ## The one rule that protects that
 
@@ -198,7 +199,29 @@ alone renders.
 ### 11. Never edit inside `node_modules`
 
 A change there survives until the next install and not one second longer. If the package is
-wrong, fix the package — see the top of this file.
+wrong, the package gets fixed — by a session in the package repo, not this one. See rule 12.
+
+### 12. A session in a client repo never edits the package
+
+Not in `node_modules`, and not in the package's own checkout if it happens to be on this machine.
+When something in the package is wrong, the deliverable from a session in this repo is a
+**description of the fix** — what is wrong, where (file and line in the installed package), what
+the behavior should be, and how to verify it — written as a prompt the user can run in a session
+opened in the package repo. The package is versioned, tested and published on its own; this site
+takes the fix with `npm update`.
+
+This session stays inside this site's scope. An override in `design.json`, `src/styles/custom/`
+or `src/actions/index.ts` is fine; reaching upstream is not.
+
+Why this is a rule: "fix it upstream", read from inside a client repo, invited exactly the wrong
+thing. The package source sat next door on the same machine, a session opened it mid-task and
+edited it — a change nobody reviewed, in a repo nobody had open, on no branch, which then had to
+be published before this site could even use it. The client-site session ended with the site
+depending on a package version that did not exist.
+
+`.claude/settings.json` denies `Edit` under any `node_modules/`, so the first half is mechanical
+and `webm sync` keeps it that way. Claude Code has no rule syntax for "any path outside this
+project", so the second half is this paragraph.
 
 ## Structure
 

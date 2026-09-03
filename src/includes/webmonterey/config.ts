@@ -125,6 +125,14 @@ export interface SiteConfig {
    * Read it anywhere via `environment`, `isStaging` and `isProduction` from webmonterey/site.
    * The first consumer is transactional email, which redirects every recipient to `stagingEmail`
    * on a staging deployment rather than mailing the client's real contacts from a preview.
+   *
+   * THE SECOND CONSUMER IS INDEXABILITY. A staging site is a PREVIEW BUILD on every hostname and
+   * in every build - laptop, `main` on Workers Builds, anywhere: every page is noindex with no
+   * canonical, there is no sitemap, robots.txt disallows everything, and Google Tag Manager does
+   * not load. Until this switch existed a site that had not launched was crawlable on its
+   * workers.dev URL the moment `main` deployed, because only a non-production BRANCH was a
+   * preview. See `isPreviewBuild`. Flipping this to production is therefore what makes a site
+   * indexable, which is why /webm:launch does it only once the custom domain is live.
    */
   environment?: 'production' | 'staging';
 
@@ -343,4 +351,45 @@ export function isStagingDeployment(
 
   /* Match the label, not a substring: a client domain ending "notworkers.dev" is not a preview. */
   return Boolean(hostname && /(^|\.)workers\.dev$/i.test(hostname));
+}
+
+/** Which signal made a build a preview, or null for production output. */
+export type PreviewReason = 'staging' | 'branch' | null;
+
+/**
+ * Why this build is a preview - noindex on every page, no canonical, no sitemap, robots.txt
+ * disallowing everything, no analytics - or null when it is production output.
+ *
+ * TWO INDEPENDENT SIGNALS, for the same reason `isStagingDeployment` has two.
+ *
+ * `environment` is what the deployment is FOR. A site that has not launched says `staging`, and
+ * a site that has not launched must not be indexable ANYWHERE: not on a feature branch, not on
+ * `main`, not from a laptop. Before this signal existed only a non-production branch was a
+ * preview, so `main` on Workers Builds was production output for every site that had not gone
+ * live yet - indexable pages with a canonical, a sitemap and `Allow: /` on a public workers.dev
+ * hostname. autire.webmonterey.workers.dev was crawlable that way.
+ *
+ * The branch covers the opposite case: webmonterey.json is committed, so a feature branch of a
+ * LAUNCHED site inherits `production` from main and would build indexable pages under a review
+ * URL. Workers Builds injects WORKERS_CI_BRANCH; anything other than the production branch is a
+ * preview whatever the config says.
+ *
+ * An unset environment is production, as it is everywhere else - see SiteConfig.environment for
+ * why that default is the safe one - so a site predating the field builds exactly as before.
+ * `branch` is null when nothing injected one, which is every laptop build.
+ */
+export function previewReason(input: {
+  environment: SiteConfig['environment'] | undefined;
+  branch: string | null | undefined;
+  productionBranch?: string;
+}): PreviewReason {
+  if (input.environment === 'staging') return 'staging';
+  const branch = input.branch ?? null;
+  if (branch !== null && branch !== (input.productionBranch ?? 'main')) return 'branch';
+  return null;
+}
+
+/** Whether this build is a preview. `previewReason` says which signal decided it. */
+export function isPreviewBuild(input: Parameters<typeof previewReason>[0]): boolean {
+  return previewReason(input) !== null;
 }

@@ -11,6 +11,61 @@ build. See `/webm:upgrade`.
 
 ---
 
+## 1.3.0 — 2026-09-02
+
+### Changed
+
+- **A staging site is a preview build everywhere.** `environment: "staging"` in webmonterey.json
+  now makes every build a preview — every page noindex with no canonical, no sitemap, `robots.txt`
+  `Disallow: /`, no Google Tag Manager — on every hostname and in every build: a feature branch,
+  `main` on Workers Builds, a laptop. Until now only a non-production branch was a preview, so a
+  site that had not launched was crawlable on its `workers.dev` URL the moment `main` deployed.
+  The branch rule stays: a feature branch of a launched site is still a preview. An unset
+  `environment` is production, as everywhere else, so a site predating the field builds as before.
+  The decision is one pure function, `isPreviewBuild`; the build log says which signal made a
+  build a preview, and `virtual:webm/build` carries it as `reason`.
+
+  **A launched site whose webmonterey.json still says `"staging"` disappears from search after
+  this update:** every page goes noindex and the sitemap is gone. `/webm:launch` sets
+  `"environment": "production"` and `launched` together; `webm doctor` already fails a launched
+  site still declared staging, and its message now names this consequence. Flipping `environment`
+  is what makes a site indexable, so it must not happen before the custom domain is live —
+  `/webm:start` and `/webm:launch` both say so.
+
+- **`/webm:start` creates the Worker.** Step 5 is now one deploy from the laptop — `npm run build
+  && npx wrangler deploy`, guarded by `wrangler deployments list` so a re-run skips it — and step 6
+  connects the repo to the Worker that now exists (Settings → Builds), a smaller dashboard step
+  than importing a repository and typing the Worker name in by hand. The skill used to stop and
+  ask for the Worker to be made in the dashboard; on one site it was not, and the result was a
+  repo, a database and nothing serving. That laptop deploy is the only one a site ever gets: once
+  the repo is connected, a laptop deploy is a version no build produced, which the next push
+  reverts. The adapter's auto-provisioned `<slug>-session` KV namespace is expected and stays out
+  of wrangler.jsonc. The scaffolded README's deploy note says the same.
+
+### Added
+
+- **`webm doctor` checks that the Worker exists.** It asks wrangler for the deployments of the
+  Worker named in wrangler.jsonc and warns when there are none — the silent failure above. It skips
+  with a note when wrangler is not installed or not logged in, so CI and a fresh laptop are not
+  failed for being unable to ask.
+
+- **Hard rule 12 in a site's CLAUDE.md: a session in a client repo never edits the package.** Not
+  in `node_modules`, and not in the package's checkout when it sits on the same machine. The
+  deliverable for an upstream problem is a description of the fix — what, where, expected
+  behaviour, how to verify — as a prompt for a session opened in the package repo; the site takes
+  the fix with `npm update`. Enforced as far as Claude Code's rules reach: `.claude/settings.json`
+  denies `Edit(**/node_modules/**)`, and **`webm sync` now merges the package's deny rules into a
+  site's settings on every install** — adding what is missing, leaving the site's own rules alone,
+  and dropping the two `Write(...)` rules 1.2.0 scaffolded, which Claude Code never consults and
+  warns about at startup. The docs have no rule syntax for "any path outside this project", so
+  that half stays prose.
+
+  **On an existing site:** the settings arrive with the next install. `CLAUDE.md` is the site's
+  own file, so copy rule 12 in from
+  `node_modules/@cparkerwebm/webmonterey/template/site/CLAUDE.md`.
+
+---
+
 ## 1.2.0 — 2026-09-02
 
 ### Added

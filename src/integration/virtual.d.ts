@@ -5,11 +5,14 @@
  * a package cannot import relatively - see includes/webmonterey/config.ts.
  */
 /**
- * What this build is FOR. `preview` is true on any Workers Builds branch other than the
- * production one - every page noindex, no sitemap, no analytics. A local build is not a preview.
+ * What this build is FOR. `preview` is true when webmonterey.json says `environment: "staging"`,
+ * or on any Workers Builds branch other than the production one - every page noindex, no
+ * sitemap, no analytics. `reason` says which signal decided it. A local build of a production
+ * site is not a preview. See `isPreviewBuild` in includes/webmonterey/config.ts.
  */
 declare module 'virtual:webm/build' {
-  const build: { preview: boolean; branch: string | null };
+  import type { PreviewReason } from '../includes/webmonterey/config.ts';
+  const build: { preview: boolean; reason: PreviewReason; branch: string | null };
   export default build;
 }
 

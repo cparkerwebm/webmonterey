@@ -1,0 +1,21 @@
+{
+  "//": "Project settings for minimal-example.",
+  "//mcp": "A server declared in .mcp.json is INERT until approved on each machine. Without this line the rules that say consult the Astro and MDN docs before using an API would depend on whoever cloned the repo happening to hit Approve.",
+  "includeCoAuthoredBy": false,
+  "enabledMcpjsonServers": ["astro-docs", "mdn", "website-spec", "email-spec"],
+  "//permissions": "The deny list is package-managed: `webm sync` adds any rule that is missing on every install and leaves everything else in this file alone. Edit(**/node_modules/**) is rule 12 of CLAUDE.md made mechanical - a session in this repo never edits the package.",
+  "permissions": {
+    "deny": [
+      "Read(**/.dev.vars)",
+      "Read(**/.dev.vars.*)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/.npmrc)",
+      "Edit(**/.dev.vars)",
+      "Edit(**/.env)",
+      "Edit(**/node_modules/**)"
+    ]
+  }
+}

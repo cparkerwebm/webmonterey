@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { scaffold } from './scaffold.ts';
 import { MCP_NAMES, mcpConfig } from './mcp.ts';
+import { DENY_RULES } from './settings.ts';
 
 const files = (over = {}) =>
   scaffold({
@@ -234,4 +235,12 @@ test('the margin crosses a month and a year boundary correctly', () => {
     ]!.match(/"compatibility_date":\s*"([\d-]+)"/)![1]!;
   assert.equal(at('2026-01-05'), '2025-12-22');
   assert.equal(at('2026-03-05'), '2026-02-19', 'and February');
+});
+
+test('a session in a client repo cannot edit the package: node_modules is denied', () => {
+  const deny: string[] = json(files(), '.claude/settings.json').permissions.deny;
+  assert.deepEqual(deny, [...DENY_RULES], 'the one list in cli/settings.ts');
+  assert.ok(deny.includes('Edit(**/node_modules/**)'));
+  /* Claude Code checks Edit and Read rules only; a Write rule is ignored and warned about. */
+  assert.ok(!deny.some((r) => r.startsWith('Write(')), 'no Write rule');
 });

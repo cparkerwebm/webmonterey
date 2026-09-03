@@ -31,7 +31,12 @@ import { fileURLToPath } from 'node:url';
 import { compileToCss } from '../design/compile.ts';
 import { imageSize } from './image-size.ts';
 import { loadForms, loadSiteFiles, resolveSiteUrl } from './config.ts';
-import { APP_DIR, appEnabled, resolveAppPath } from '../includes/webmonterey/config.ts';
+import {
+  APP_DIR,
+  appEnabled,
+  previewReason,
+  resolveAppPath,
+} from '../includes/webmonterey/config.ts';
 
 export interface WebmontereyOptions {
   /**
@@ -79,10 +84,14 @@ export interface WebmontereyOptions {
   /**
    * The branch Workers Builds deploys to production. Default `main`.
    *
-   * Every other branch is a PREVIEW, and a preview build is different on purpose: every page is
-   * noindex, there is no sitemap, robots.txt disallows everything, and Google Tag Manager does
-   * not load - so a client's review link can never be indexed, and clicking around it never
-   * lands in their analytics. Detected from WORKERS_CI_BRANCH, which Workers Builds injects.
+   * Every other branch is a PREVIEW - and so is every build, on any branch and from any machine,
+   * of a site whose webmonterey.json says `environment: "staging"`. A preview build is different
+   * on purpose: every page is noindex with no canonical, there is no sitemap, robots.txt
+   * disallows everything, and Google Tag Manager does not load - so a client's review link can
+   * never be indexed, a site that has not launched cannot be indexed before it exists, and
+   * clicking around either never lands in their analytics. The branch comes from
+   * WORKERS_CI_BRANCH, which Workers Builds injects; the decision is `isPreviewBuild` in
+   * includes/webmonterey/config.ts.
    */
   productionBranch?: string;
 }
@@ -133,14 +142,29 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
         const appPath = resolveAppPath(files.site);
 
         /*
-         * BRANCH PREVIEW OR PRODUCTION. Workers Builds injects WORKERS_CI_BRANCH; anything that
-         * is not the production branch is a preview. A local build has no branch and is treated
-         * as production, which is what `npm run preview` and the e2e need. See the option.
+         * PREVIEW OR PRODUCTION, decided in one place - previewReason - from two signals. A site
+         * whose webmonterey.json says `environment: "staging"` is a preview in every build,
+         * whatever the branch and whatever the machine; and on a launched site any Workers
+         * Builds branch other than the production one is a preview too. A local build of a
+         * production site has no branch and is production output, which is what
+         * `npm run preview` and the e2e need. See the option, and the function.
          */
         const branch = process.env.WORKERS_CI_BRANCH ?? null;
-        const preview = branch !== null && branch !== (options.productionBranch ?? 'main');
-        if (preview) {
-          logger.info(`branch "${branch}" is a preview: noindex, no sitemap, no analytics`);
+        const productionBranch = options.productionBranch ?? 'main';
+        const reason = previewReason({
+          environment: files.site.environment,
+          branch,
+          productionBranch,
+        });
+        const preview = reason !== null;
+        if (reason === 'staging') {
+          logger.info(
+            'environment is "staging" in webmonterey.json: a preview build - noindex, no sitemap, no analytics',
+          );
+        } else if (reason === 'branch') {
+          logger.info(
+            `branch "${branch}" is not ${productionBranch}: a preview build - noindex, no sitemap, no analytics`,
+          );
         }
 
         /*
@@ -255,7 +279,7 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
                 load(id: string) {
                   switch (id) {
                     case resolved(VIRTUAL.build):
-                      return `export default ${JSON.stringify({ preview, branch })};`;
+                      return `export default ${JSON.stringify({ preview, reason, branch })};`;
                     case resolved(VIRTUAL.site):
                       return `export default ${JSON.stringify(files.site)};`;
                     case resolved(VIRTUAL.design):

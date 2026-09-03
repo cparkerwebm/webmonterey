@@ -8,8 +8,10 @@
  *
  * Exit code is 1 on any failure, so it can gate a build or a go-live.
  */
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, join, relative, resolve } from 'node:path';
 import { CHECKS, type CheckContext } from './checks.ts';
 import { loadSiteFiles } from '../integration/config.ts';
 
@@ -108,16 +110,90 @@ function readMcp(siteRoot: string): CheckContext['mcp'] {
   };
 }
 
+/**
+ * Ask wrangler whether the Worker exists - the one check here that leaves the machine.
+ *
+ * `wrangler deployments list --name <name> --json` is a read: it lists what is deployed and
+ * changes nothing. wrangler is resolved from the site upward, the way `npx` would find it,
+ * rather than downloaded - a doctor that installs things is not a doctor. Every way the question
+ * can go unanswered - no wrangler, not logged in, no network - is a SKIP with the reason, never
+ * a failure: the check exists to catch a missing Worker, and a laptop that cannot ask is not
+ * evidence of one.
+ *
+ * The two answers that matter are told apart by wrangler's own words: a missing Worker is
+ * "does not exist [code: 10007]"; a missing login is a request to set CLOUDFLARE_API_TOKEN, an
+ * authentication error, or a rejected token.
+ */
+function workerState(siteRoot: string, name: string | null | undefined): CheckContext['worker'] {
+  const worker = { name: name ?? null, deployments: null, skipped: null };
+  if (!worker.name) return worker;
+
+  /* Absolute, or createRequire refuses it - `webm doctor examples/minimal` passes a relative root. */
+  let bin: string;
+  try {
+    const require = createRequire(join(resolve(siteRoot), 'package.json'));
+    bin = join(dirname(require.resolve('wrangler/package.json')), 'bin/wrangler.js');
+  } catch {
+    return {
+      ...worker,
+      skipped: 'wrangler is not installed here, so the Worker was not looked for',
+    };
+  }
+
+  try {
+    const out = execFileSync(
+      process.execPath,
+      [bin, 'deployments', 'list', '--name', worker.name, '--json'],
+      {
+        cwd: siteRoot,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 30_000,
+        env: { ...process.env, WRANGLER_SEND_METRICS: 'false', NO_COLOR: '1' },
+      },
+    );
+    const start = out.indexOf('[');
+    const parsed: unknown = start >= 0 ? JSON.parse(out.slice(start)) : [];
+    return { ...worker, deployments: Array.isArray(parsed) ? parsed.length : 0 };
+  } catch (error) {
+    const e = error as { stdout?: string; stderr?: string; message?: string };
+    const text = `${e.stdout ?? ''}\n${e.stderr ?? ''}\n${e.message ?? ''}`;
+    if (/code: 10007\]|does not exist on your account/i.test(text)) {
+      return { ...worker, deployments: 0 };
+    }
+    if (
+      /CLOUDFLARE_API_TOKEN|not (logged in|authenticated)|Authentication error|code: (10000|6111|9109)\]/i.test(
+        text,
+      )
+    ) {
+      return {
+        ...worker,
+        skipped:
+          'wrangler is not logged in (npx wrangler login), so whether the Worker exists was not checked',
+      };
+    }
+    const line = text
+      .split('\n')
+      .map((l) => l.replace(/\x1b\[[0-9;]*m/g, '').trim())
+      .find((l) => l && !l.startsWith('🪵'));
+    return { ...worker, skipped: `wrangler could not answer: ${line ?? 'no output'}` };
+  }
+}
+
 export function buildContext(siteRoot: string): CheckContext {
   const { site } = loadSiteFiles(siteRoot);
   const wranglerPath = ['wrangler.jsonc', 'wrangler.json']
     .map((f) => join(siteRoot, f))
     .find(existsSync);
   const syncPath = join(siteRoot, '.claude/skills/webm/.webm-sync.json');
+  const wrangler: CheckContext['wrangler'] = wranglerPath
+    ? parseJsonc(readFileSync(wranglerPath, 'utf8'))
+    : null;
 
   return {
     site,
-    wrangler: wranglerPath ? parseJsonc(readFileSync(wranglerPath, 'utf8')) : null,
+    wrangler,
+    worker: workerState(siteRoot, wrangler?.name),
     pages: readTree(siteRoot, 'src/pages', ['.astro', '.ts']),
     components: readTree(siteRoot, 'src/components', ['.astro', '.ts']),
     today: new Date().toISOString().slice(0, 10),

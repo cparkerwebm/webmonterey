@@ -47,6 +47,12 @@ account-level connector, never here and never in a client repo.
   the script refuses without it. Never `npm publish` by hand.
 - **A codemod must be idempotent.** A half-finished upgrade gets re-run, and one that doubles its
   own work on the second pass is worse than none.
+- **The package is edited here, and client sites are never edited from here.** Rule 12 of
+  [template/site/CLAUDE.md](template/site/CLAUDE.md) says a session in a client repo never
+  reaches into this checkout; the inverse holds too. A problem found in a client site is fixed
+  here, released, and taken by the site with `npm update`. A session in this repo does not open a
+  client repo to patch around a package bug, and does not prove a change by editing a client site
+  in place - examples/minimal and `npm run test:e2e` are what a change is proven on.
 
 ## Before you say it works
 

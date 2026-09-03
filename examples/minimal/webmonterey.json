@@ -5,6 +5,8 @@
   "repo": "cparkerwebm/webmonterey",
   "worker": "minimal-example",
   "launched": null,
+  "//environment": "Explicitly production: build.test.mjs asserts production output - a canonical, a sitemap, Allow: / - and a staging site is a preview build in every build, the laptop included.",
+  "environment": "production",
   "timeZone": "America/Los_Angeles",
   "locale": "en-US",
   "organization": {

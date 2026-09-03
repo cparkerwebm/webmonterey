@@ -10,6 +10,7 @@
  */
 import { resourceNames } from './slug.ts';
 import { MCP_NAMES, mcpConfig } from './mcp.ts';
+import { projectSettings } from './settings.ts';
 
 export interface ScaffoldOptions {
   domain: string;
@@ -151,7 +152,7 @@ export function scaffold(options: ScaffoldOptions): Record<string, string> {
         slug: n.slug,
         launched: null,
         '//environment':
-          "What this deployment is FOR. 'staging' redirects EVERY email the site sends to stagingEmail below, so testing a form on a preview cannot reach the client's real contacts. A new site starts here; /webm:launch flips it to 'production'. Anything served from workers.dev is treated as staging regardless, so a branch preview of a live site is covered too.",
+          "What this deployment is FOR. 'staging' makes every build a PREVIEW - every page noindex with no canonical, no sitemap, robots.txt disallowing everything, no Google Tag Manager - on every hostname, main included, so a site that has not launched cannot be indexed before it exists; and it redirects EVERY email the site sends to stagingEmail below, so testing a form on a preview cannot reach the client's real contacts. A new site starts here; /webm:launch flips it to 'production' once the custom domain is live, and that flip is what makes the site indexable. A branch other than main is a preview regardless, and anything served from workers.dev redirects its mail regardless, so a branch preview of a live site is covered too.",
         environment: 'staging',
         '//stagingEmail':
           'Where staging email goes instead of its real recipients. REQUIRED while environment is staging - a staging site with nowhere to send refuses to send rather than guessing. webm doctor checks.',
@@ -250,33 +251,11 @@ export function scaffold(options: ScaffoldOptions): Record<string, string> {
       2,
     ) + '\n';
 
-  files['.claude/settings.json'] =
-    JSON.stringify(
-      {
-        '//': `Project settings for ${n.repo}.`,
-        '//mcp':
-          'A server declared in .mcp.json is INERT until approved on each machine. Without this line the rules that say consult the Astro and MDN docs before using an API would depend on whoever cloned the repo happening to hit Approve.',
-        includeCoAuthoredBy: false,
-        enabledMcpjsonServers: MCP_NAMES,
-        permissions: {
-          deny: [
-            'Read(**/.dev.vars)',
-            'Read(**/.dev.vars.*)',
-            'Read(**/.env)',
-            'Read(**/.env.*)',
-            'Read(**/*.pem)',
-            'Read(**/*.key)',
-            'Read(**/.npmrc)',
-            'Edit(**/.dev.vars)',
-            'Edit(**/.env)',
-            'Write(**/.dev.vars)',
-            'Write(**/.env)',
-          ],
-        },
-      },
-      null,
-      2,
-    ) + '\n';
+  /*
+   * The deny list comes from cli/settings.ts, the one place it is declared, so a new site and a
+   * `webm sync` on an old one agree about what a session may not touch.
+   */
+  files['.claude/settings.json'] = JSON.stringify(projectSettings(n.repo), null, 2) + '\n';
 
   files['.mcp.json'] = JSON.stringify(mcpConfig(), null, 2) + '\n';
 
@@ -418,8 +397,11 @@ export function scaffold(options: ScaffoldOptions): Record<string, string> {
     `domain Chrome could mistake for a lookalike. A second resource of one kind takes a purpose\n` +
     `suffix - \`${n.slug}-portal\`.\n\n` +
     `## Deploying\n\n` +
-    `Push to deploy. A \`wrangler deploy\` from a laptop creates a version no build produced, so\n` +
-    `history stops describing what is live and the next push reverts it.\n`;
+    `The Worker is created ONCE from a laptop - \`npm run build && npx wrangler deploy\` - and the\n` +
+    `repo is then connected to it in the dashboard (Worker → Settings → Builds). /webm:start does\n` +
+    `both. From then on, push to deploy: a \`wrangler deploy\` from a laptop after that creates a\n` +
+    `version no build produced, so history stops describing what is live and the next push\n` +
+    `reverts it.\n`;
 
   return files;
 }

@@ -3,6 +3,7 @@
   "//mcp": "A server declared in .mcp.json is INERT until approved on each machine. Without this line the rules that say consult the docs before using an API would depend on whoever cloned the repo happening to hit Approve. The list is generated from src/cli/mcp.ts and a test asserts it still matches.",
   "includeCoAuthoredBy": false,
   "enabledMcpjsonServers": ["astro-docs", "mdn", "website-spec", "email-spec"],
+  "//permissions": "Claude Code consults Edit and Read path rules only; a Write rule is ignored and warned about at startup, so there is none. node_modules is denied here for the same reason it is in every client site: a package is fixed in its own repo.",
   "permissions": {
     "deny": [
       "Read(**/.env)",
@@ -11,7 +12,7 @@
       "Read(**/*.pem)",
       "Read(**/*.key)",
       "Edit(**/.env)",
-      "Write(**/.env)"
+      "Edit(**/node_modules/**)"
     ]
   }
 }

@@ -22,6 +22,7 @@ const base = (over: Partial<CheckContext> = {}): CheckContext => ({
   sync: { version: '1.0.0', skills: ['launch'] },
   mcp: { declared: mcpConfig().mcpServers, enabled: [...MCP_NAMES] },
   version: '1.0.0',
+  worker: { name: 'acme', deployments: 1, skipped: null },
   ...over,
 });
 
@@ -708,4 +709,43 @@ test('a server pointed at the wrong url is caught, and both urls are shown', () 
   assert.equal(r.status, 'fail');
   assert.match(r.detail!, /example\.com/);
   assert.ok(r.detail!.includes(MCP_SERVERS.mdn.url));
+});
+
+/* --- the Worker exists --------------------------------------------------- */
+
+test('a Worker with no deployment warns and says how to create it', () => {
+  /* A repo, a database and nothing serving: the failure /webm:start used to end on. */
+  const r = runCheck(
+    'worker-exists',
+    base({ worker: { name: 'acme', deployments: 0, skipped: null } }),
+  );
+  assert.equal(r.status, 'warn');
+  assert.match(r.detail!, /"acme"/);
+  assert.match(r.detail!, /wrangler deploy/);
+  assert.match(r.detail!, /Settings → Builds/);
+});
+
+test('an unanswerable question skips with the reason, and is not a failure', () => {
+  const r = runCheck(
+    'worker-exists',
+    base({ worker: { name: 'acme', deployments: null, skipped: 'wrangler is not logged in' } }),
+  );
+  assert.equal(r.status, 'pass');
+  assert.match(r.detail!, /skipped: wrangler is not logged in/);
+});
+
+test('a deployed Worker passes', () => {
+  assert.equal(runCheck('worker-exists', base()).status, 'pass');
+});
+
+test('a launched site still declared staging fails, and the message names the search consequence', () => {
+  const r = runCheck(
+    'environment',
+    base({
+      site: { client: 'A', domain: 'a.com', environment: 'staging', launched: '2026-09-01' },
+    }),
+  );
+  assert.equal(r.status, 'fail');
+  assert.match(r.detail!, /noindex/);
+  assert.match(r.detail!, /out of search/);
 });

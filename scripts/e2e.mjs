@@ -109,6 +109,19 @@ try {
   check('webm new produced a site', existsSync(join(site, 'astro.config.mjs')));
 
   /*
+   * The scaffold starts a site on environment "staging", and a staging site is a preview build
+   * everywhere - noindex, no sitemap, Disallow: /. Everything below measures PRODUCTION output,
+   * so this flips it the way /webm:launch does. The staging build itself is asserted at the end.
+   */
+  const siteJson = join(site, 'webmonterey.json');
+  const scaffolded = JSON.parse(readFileSync(siteJson, 'utf8'));
+  check('the scaffold starts a site on staging', scaffolded.environment === 'staging');
+  writeFileSync(
+    siteJson,
+    JSON.stringify({ ...scaffolded, environment: 'production' }, null, 2) + '\n',
+  );
+
+  /*
    * Point at the tarball - everything else is untouched. In --registry mode the scaffolded
    * ^version is left alone: resolving it from npmjs IS the test.
    */
@@ -245,6 +258,23 @@ try {
     'the webmaster page on a preview carries no agency graph',
     !read('webmaster/index.html').includes('#organization'),
   );
+
+  /*
+   * A STAGING BUILD, with no branch at all - the laptop build of a site that has not launched.
+   * This is the case that was indexable before 1.3.0: only a non-production branch used to be a
+   * preview, so `main` and a laptop build of a staging site produced production output.
+   */
+  console.log('staging build (environment: "staging", no WORKERS_CI_BRANCH)…');
+  writeFileSync(siteJson, JSON.stringify(scaffolded, null, 2) + '\n');
+  run('npx', ['astro', 'build'], site);
+  const stagingIndex = read('index.html');
+  check(
+    'every page of a staging site is noindex, with no branch at all',
+    /name="robots" content="noindex/.test(stagingIndex),
+  );
+  check('a staging page emits no canonical', !/rel="canonical"/.test(stagingIndex));
+  check('a staging site has no sitemap', !existsSync(join(dist, 'sitemap-index.xml')));
+  check('a staging robots.txt disallows everything', /Disallow: \/\s*$/m.test(read('robots.txt')));
 
   console.log('webm doctor…');
   const doctor = run('npx', ['webm', 'doctor'], site);

@@ -26,6 +26,9 @@
  *                                  a real D1 database must NEVER change - SQLite has already run
  *                                  it and wrangler tracks it by name. Later versions add 0002,
  *                                  they do not rewrite 0001.
+ *   MERGE     .claude/settings.json The package's deny rules are added when absent and the file
+ *                                  is otherwise left as found - a client's allow list is theirs.
+ *                                  See cli/settings.ts for the rules and why they are rules.
  *   SEED      public/, content     Written once by `webm new` and then the client's outright.
  *                                  Not handled here at all - see cli/scaffold.ts.
  *
@@ -46,8 +49,9 @@ import {
   writeFileSync,
   readdirSync,
 } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { PACKAGE_ROOT, packageVersion } from './package-root.ts';
+import { DENY_RULES, projectSettings, withDenyRules } from './settings.ts';
 
 /**
  * The namespace. Rule 5's prefix: the CLI is `webm`, the tokens are --webm-*, the classes are
@@ -68,6 +72,11 @@ interface SyncResult {
   workflows: string[];
   /** Migrations copied because the site did not have them. Never includes an existing file. */
   migrations: string[];
+  /**
+   * What changed in .claude/settings.json: deny rules added, stale ones removed, the file
+   * created when there was none, or why it was left alone.
+   */
+  settings: { added: string[]; removed: string[]; created: boolean; skipped: string | null };
 }
 
 /**
@@ -117,6 +126,46 @@ function addMissing(source: string, target: string): string[] {
     added.push(entry.name);
   }
   return added.sort();
+}
+
+/**
+ * MERGE. The package's deny rules into the site's settings, and nothing else.
+ *
+ * `.claude/settings.json` is the site's: a client adds allow rules to it, and a full replace would
+ * throw those away on the next install. So the file is read, the rules in cli/settings.ts are
+ * added where absent, the two rules Claude Code warns about at startup are dropped, and the file
+ * is written back only when that changed something - a second pass is a no-op. A file that will
+ * not parse is left exactly as it is and reported: Claude Code cannot read it either, and
+ * rewriting it would hide that.
+ *
+ * Created from the scaffold's defaults when there is none, so a site that predates the file gets
+ * the rules on its next install rather than never.
+ */
+function ensureSettings(siteRoot: string): SyncResult['settings'] {
+  const path = join(siteRoot, '.claude', 'settings.json');
+  if (!existsSync(path)) {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(projectSettings(basename(siteRoot)), null, 2) + '\n');
+    return { added: [...DENY_RULES], removed: [], created: true, skipped: null };
+  }
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+  } catch {
+    return {
+      added: [],
+      removed: [],
+      created: false,
+      skipped: '.claude/settings.json is not valid JSON, so it was left alone',
+    };
+  }
+
+  const { settings, added, removed } = withDenyRules(parsed);
+  if (added.length || removed.length) {
+    writeFileSync(path, JSON.stringify(settings, null, 2) + '\n');
+  }
+  return { added, removed, created: false, skipped: null };
 }
 
 function listSkills(dir: string): string[] {
@@ -207,6 +256,7 @@ export function sync(siteRoot: string): SyncResult {
      */
     workflows: syncDir(join(template, 'workflows'), join(siteRoot, '.github/workflows')),
     migrations: addMissing(join(template, 'migrations'), join(siteRoot, 'migrations')),
+    settings: ensureSettings(siteRoot),
   };
 }
 
@@ -244,6 +294,19 @@ export function run(argv: string[]): number {
   }
   for (const m of result.migrations) {
     console.log(`  + migrations/${m}  (apply it: npx wrangler d1 migrations apply <DB> --remote)`);
+  }
+  if (result.settings.created) {
+    console.log(`  + .claude/settings.json`);
+  } else if (result.settings.skipped) {
+    console.log(`  ${result.settings.skipped}`);
+  } else if (result.settings.added.length || result.settings.removed.length) {
+    const parts = [
+      result.settings.added.length && `+${result.settings.added.length} deny`,
+      result.settings.removed.length && `-${result.settings.removed.length} stale`,
+    ].filter(Boolean);
+    console.log(
+      `  .claude/settings.json: ${parts.join(', ')} (package-managed rules; yours are kept)`,
+    );
   }
 
   if (ensureGitignored(siteRoot)) {

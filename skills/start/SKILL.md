@@ -97,23 +97,70 @@ like a bot does.
 **Every route with `export const prerender = false` goes in `run_worker_first`, in both slash
 forms.** Miss one and it returns 200 to curl and a 404 page to Chrome. `webm doctor` checks.
 
-## 5. Workers Builds
+## 5. Create the Worker - once, from the laptop
 
-Connect the repo in the Cloudflare dashboard: **Workers & Pages → Create → Import a repository**.
-The Worker name must be the slug exactly as `wrangler.jsonc` has it - Workers Builds fails on a
-mismatch.
+Guarded and re-runnable: skip this step when the Worker already exists.
 
-No build variables are needed. **Push to deploy from then on** - a `wrangler deploy` from a
-laptop creates a version no build produced, so history stops describing what is live, and the
-next push reverts it.
+```sh
+npx wrangler deployments list --name <slug>   # a list: it exists. "does not exist [code: 10007]": create it
+```
 
-## 6. Verify the first deploy
+The name is `name` in `wrangler.jsonc`. When there is nothing:
 
-Wait a minute after the build reports success - a brand-new Worker can return `error code:
-1042` on valid paths for about that long. Then, in a real browser with the console open, load
-the `workers.dev` URL. The home page renders, the console is clean.
+```sh
+npm run build            # a real build; `dev` proves nothing here
+npx wrangler deploy
+```
 
-## 7. Hand over
+**This is the ONLY laptop deploy a site ever gets.** Before Workers Builds is connected, one
+deploy is exactly how the Worker comes into existence. After it is connected (step 6) a laptop
+deploy is the mistake: a version no build produced, which the next push reverts. This skill used
+to stop here and say to create the Worker in the dashboard by hand, and on one site nobody did -
+the result was a repo, a D1 database and nothing serving. `webm doctor` now warns on that.
+
+The deploy provisions something `wrangler.jsonc` does not name, and that is expected: the Astro
+Cloudflare adapter adds a `SESSION` KV binding, which wrangler auto-provisions as
+`<slug>-session`. Do not add it to the config by hand.
+
+Then verify. Wait a minute first - a brand-new Worker can return `error code: 1042` on valid
+paths for about that long. In a real browser with the console open, load
+`https://<slug>.<account>.workers.dev`: the home page renders, the console is clean. Then check
+one on-demand route with a document-style request, if the site has one yet - a fresh scaffold's
+only Worker route is the form action, which is POST-only:
+
+```sh
+curl -sI -H 'Sec-Fetch-Dest: document' https://<slug>.<account>.workers.dev/<on-demand-route>
+```
+
+The asset router keys off that header and plain curl does not send it, so a route that is 200 to
+`curl` and 404 here is missing from `run_worker_first` (step 4).
+
+## 6. Connect the repo
+
+In the dashboard, on the Worker that now exists: **Settings → Builds → connect `<org>/<slug>`**,
+production branch `main`, no build variables. Connecting a repo to an EXISTING Worker is the
+smaller step - importing a repository and typing the Worker name in by hand is where the name
+mismatch Workers Builds fails on comes from.
+
+**Push to deploy from then on.** The first push supersedes the laptop version. A `wrangler
+deploy` from a laptop after this point creates a version no build produced, so history stops
+describing what is live and the next push reverts it.
+
+Confirm it took:
+
+```sh
+npx wrangler deployments list --name <slug>
+```
+
+The newest deployment's Source is no longer `Upload`.
+
+## 7. Verify the first push
+
+Wait a minute after the build reports success - the 1042 window again - then load the
+`workers.dev` URL in a real browser with the console open. The home page renders, the console is
+clean.
+
+## 8. Hand over
 
 Workers Builds comments the preview URL on every PR - that is the client's review link. Preview
 hostnames use the slug, so Chrome's lookalike warning should not appear; if it does, it is a
@@ -121,7 +168,10 @@ URL-shape false positive and **Ignore is safe**.
 
 A preview build is safe to hand out: every page is noindex, there is no sitemap, robots.txt
 disallows everything, analytics does not load, and mail is redirected to `stagingEmail`. The
-client can click anything. The production branch is `main`; anything else previews.
+client can click anything. **Every build of this site is a preview while `environment` is
+`staging`** - `main` and the laptop included - so nothing is indexable before `/webm:launch`
+flips it, and that flip is what makes the site indexable. On a launched site the production
+branch is `main`; anything else previews.
 
 Next: `/webm:new-component` for each block, then `/webm:launch` when the site is
 content-complete and approved on a preview.

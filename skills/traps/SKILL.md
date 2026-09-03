@@ -329,6 +329,14 @@ divert every enquiry the day a site answers on `www.`.
 nightly sweep — the check that reads a hostname cannot see a cron at all. This is why the switch
 is config rather than something derived from the URL.
 
+**A staging site is a preview build everywhere, and flipping `environment` is what makes it
+indexable.** On `staging` every build — a branch, `main`, a laptop — is noindex on every page with
+no canonical, no sitemap, `Disallow: /` and no Google Tag Manager. So a site that has not launched
+cannot be indexed on its `workers.dev` URL, and a launched site left on `staging` after 1.3.0
+drops out of search with no symptom on the page. `webm doctor` fails the second; `/webm:launch`
+flips the switch only once the custom domain is live. A branch other than `main` previews
+regardless of the switch.
+
 **Check the client's existing DMARC before adding a sending subdomain.** A DMARC record on
 `example.com` applies to its subdomains by default. If the client publishes `p=reject` and DKIM on
 the new subdomain is not right, **every message vanishes** — no bounce, no error, nothing in the

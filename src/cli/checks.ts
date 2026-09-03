@@ -32,6 +32,7 @@ export interface CheckContext {
   site: SiteConfig;
   /** Parsed wrangler.jsonc, or null when absent. */
   wrangler: {
+    name?: string;
     assets?: { run_worker_first?: string[] };
     compatibility_date?: string;
     triggers?: { crons?: string[] };
@@ -73,6 +74,12 @@ export interface CheckContext {
   };
   /** The installed package version. */
   version: string;
+  /**
+   * Whether the Worker named in wrangler.jsonc exists on the account, asked of wrangler by the
+   * doctor. `deployments` is how many it listed - null when the question was not asked, and
+   * `skipped` then says why: wrangler not installed, not logged in, no network.
+   */
+  worker: { name: string | null; deployments: number | null; skipped: string | null };
 }
 
 export interface Check {
@@ -745,7 +752,9 @@ export const CHECKS: Check[] = [
   {
     id: 'environment',
     title: 'The declared environment matches where the site actually is',
-    silentAs: "a launched site whose client email is still being diverted to the agency's inbox",
+    silentAs:
+      "a launched site whose client email is still being diverted to the agency's inbox, and " +
+      'whose every page is noindex',
     run(ctx) {
       const declared = ctx.site.environment;
 
@@ -771,19 +780,48 @@ export const CHECKS: Check[] = [
       if (declared === 'staging' && isConfigured(ctx.site.launched)) {
         return fail(
           `this site launched on ${ctx.site.launched} but is still declared staging, so every ` +
-            `email it sends is being redirected away from its real recipients. Set ` +
-            `"environment": "production" in webmonterey.json.`,
+            `email it sends is being redirected away from its real recipients - and since 1.3.0 ` +
+            `every build of a staging site is a preview: noindex on every page, no canonical, ` +
+            `no sitemap, robots.txt disallowing everything. The live site is dropping out of ` +
+            `search. Set "environment": "production" in webmonterey.json.`,
         );
       }
 
       if (declared !== 'staging' && !isConfigured(ctx.site.launched)) {
         return warn(
           `this site has no launch date but is treated as production, so testing a form will ` +
-            `email the client's real contacts. Set "environment": "staging" in ` +
-            `webmonterey.json until /webm:launch.`,
+            `email the client's real contacts and every page is indexable on its workers.dev ` +
+            `hostname. Set "environment": "staging" in webmonterey.json until /webm:launch.`,
         );
       }
 
+      return pass;
+    },
+  },
+  {
+    /*
+     * THE WORKER EXISTS. /webm:start used to end with a repo, a D1 database and an instruction
+     * to create the Worker in the dashboard by hand - and on one site nobody did. Nothing local
+     * notices: the build is green, every other check here is green, and the site is a
+     * workers.dev hostname that answers nothing. The Worker is the one resource whose absence
+     * has no symptom on disk, so this asks Cloudflare through wrangler - the one thing a laptop
+     * can ask - and steps aside with a note when it cannot.
+     */
+    id: 'worker-exists',
+    title: 'The Worker exists',
+    silentAs: 'a site with a repo, a database and nothing serving',
+    run(ctx) {
+      if (ctx.worker.skipped) return { status: 'pass', detail: `skipped: ${ctx.worker.skipped}` };
+      if (!ctx.worker.name) {
+        return warn('wrangler.jsonc names no Worker, so there is nothing to look for');
+      }
+      if (!ctx.worker.deployments) {
+        return warn(
+          `no deployment of a Worker named "${ctx.worker.name}" on this account. Create it once ` +
+            `from the laptop - npm run build && npx wrangler deploy - then connect the repo to ` +
+            `it in the dashboard (Worker → Settings → Builds). /webm:start, steps 5 and 6.`,
+        );
+      }
       return pass;
     },
   },

@@ -268,7 +268,7 @@ lost to the injected one silently.
 | `client`, `domain` | Identity. `CHANGEME` is handled differently by five consumers: the credit throws, robots omits the sitemap line, email falls back to the domain. Never guessed into a `<title>`. |
 | `repo`, `worker`, `slug` | The derived names, recorded so they are visible. |
 | `launched` | The date that turns placeholder-artwork and environment warnings into failures. |
-| `environment`, `stagingEmail` | Staging rewrites every recipient. Anything on `workers.dev` is staging regardless. Both directions of getting it wrong are silent, so doctor checks both against `launched`. |
+| `environment`, `stagingEmail` | Staging rewrites every recipient and makes every build a preview: noindex, no sitemap, `Disallow: /`, no GTM. Anything on `workers.dev` redirects mail regardless. Both directions of getting it wrong are silent, so doctor checks both against `launched`. |
 | `gtmId` | Public by design; tracked here because `.env` is absent on Workers Builds and a site lost all analytics in production over exactly that. `PUBLIC_GTM_ID` still overrides. |
 | `timeZone`, `locale` | Every client-facing date. Cron runs in UTC; `hourNow()` is the companion. |
 | `shortName`, `brandTitles` | Title composition, for a long client name or a site whose pages author full titles. |
@@ -305,16 +305,25 @@ Mailgun's test mode would verify the API call and nothing about the rendering.
 **There is no default inbox.** A staging site with no `stagingEmail` throws rather than mailing
 the real recipients, and doctor fails it before anyone submits a form.
 
-### Branch previews are a different build
+### Staging sites and branch previews are a different build
 
 Workers Builds deploys every pushed branch to `<branch>-<worker>.<account>.workers.dev` and
 comments the URL on the PR — that is the client's review link, and it is sold as a feature. It is
-also a public URL of a copy of the site, so the package treats any branch other than the
-production one (`main`, or `productionBranch` on the integration; detected from the
-`WORKERS_CI_BRANCH` Workers Builds injects) as a **preview build**: every page noindex with no
+also a public URL of a copy of the site — and until the site launches, so is `main`. So a build is
+a **preview build** on either of two signals, decided in one pure function, `isPreviewBuild`:
+`environment: "staging"` in webmonterey.json (every build, every hostname, the laptop included),
+or any branch other than the production one (`main`, or `productionBranch` on the integration;
+from the `WORKERS_CI_BRANCH` Workers Builds injects). A preview is: every page noindex with no
 canonical, no sitemap, `robots.txt` disallows everything, GTM does not load, and `/webmaster`
-emits no graph. Together with the `workers.dev` mail redirect, a preview can be handed to a
-client with nothing to warn them about. A local build has no branch and is production.
+emits no graph. Together with the `workers.dev` mail redirect, a preview can be handed to a client
+with nothing to warn them about. A local build of a production site has no branch and is
+production output.
+
+Until 1.3.0 only the branch was a signal, so `main` of a site that had not launched was
+indexable on its `workers.dev` hostname — the case that made `environment` the switch. Flipping it
+at launch is therefore what makes a site indexable, which is why it happens after the custom
+domain is live and never before, and why a launched site still declared staging disappears from
+search; doctor fails that.
 
 ---
 
@@ -365,6 +374,7 @@ doctor check written for one version mis-fires on the other. Materialized skills
 | --- | --- | --- |
 | **REPLACE** | `.claude/skills/webm/`, `scripts/`, `.github/workflows/ci.yml` | Regenerated every install. A fix propagates. |
 | **ADD-ONLY** | `migrations/` | Copied when absent, never rewritten. An applied migration must not change. |
+| **MERGE** | `.claude/settings.json` | The package's deny rules are added when absent; the rest of the file is the site's. |
 | **SEED** | `public/`, `CLAUDE.md`, `CONTENT.md`, `src/forms/contact.json`, editor config | Written once by `webm new`, then the client's outright. |
 
 Anything a client will edit is SEED. Putting it in REPLACE throws their work away on the next

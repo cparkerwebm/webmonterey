@@ -183,12 +183,15 @@ const {
 } = Astro.props;
 
 /*
- * A BRANCH PREVIEW IS NOINDEX, EVERY PAGE. The review link a client gets is a public workers.dev
- * URL, and a search engine that finds one indexes a duplicate of the site under the wrong
- * hostname. noindex also suppresses the canonical and og:url below, so the preview sends one
- * signal rather than "do not index me" beside "my real address is over there". GTM is skipped on
- * a preview for the same reason in the other direction: a client clicking through their review
- * link must not show up in their own analytics.
+ * A PREVIEW BUILD IS NOINDEX, EVERY PAGE. A preview is a staging site (`environment` in
+ * webmonterey.json) on any hostname, or a non-production branch of a launched one - see
+ * isPreviewBuild in includes/webmonterey/config.ts. The review link a client gets is a public
+ * workers.dev URL, and a search engine that finds one indexes a duplicate of the site under the
+ * wrong hostname - or, for a site that has not launched, indexes the site before it exists.
+ * noindex also suppresses the canonical and og:url below, so the preview sends one signal rather
+ * than "do not index me" beside "my real address is over there". GTM is skipped on a preview for
+ * the same reason in the other direction: a client clicking through their review link must not
+ * show up in their own analytics.
  */
 const noindex = noindexProp || build.preview;
 const analyticsOn = analytics && !build.preview;
