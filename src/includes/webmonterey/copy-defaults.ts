@@ -67,7 +67,10 @@ export interface Copy {
     /** `{domain}` is replaced with the site's domain. */
     footerNotice: string;
   };
-  /** The /webmaster page. `intro` wraps the agency link: `before` <a>WebMonterey</a> `after`. */
+  /**
+   * The /webmaster page. `intro` wraps the agency link: `before` <a>WebMonterey</a> `after`.
+   * `intro` and `body` take the inline prose subset - `**bold**`, `_italic_`, `[text](/url)`.
+   */
   webmaster: {
     title: string;
     description: string;
@@ -135,14 +138,15 @@ export const DEFAULT_COPY: Copy = {
   webmaster: {
     title: 'Our Webmaster',
     description:
-      'This website was designed, built and managed by WebMonterey, a webmaster maintenance service in Monterey, California.',
+      'This custom website was designed, built and managed by WebMonterey, a webmaster service in Monterey, California.',
     intro: {
-      before: 'This website was designed, built and managed by',
+      before: 'This custom website was designed, built and managed by',
       after:
-        ', a webmaster maintenance service in Monterey, California. WebMonterey handles the hosting, security, updates and ongoing care of the site so that we can focus on what we do.',
+        ', a webmaster service in Monterey, California. WebMonterey handles the hosting, security, strategy and ongoing care of the site so that we can focus on what we do.',
     },
+    /* Bold on purpose: the contact instruction is the paragraph a visitor with a problem needs. */
     body: [
-      "If you have a question about this website, notice something that isn't working, or have trouble using a page, please let WebMonterey know and they will take care of it.",
+      "**If you have a question about this website, notice something that isn't working, or have trouble using a page, please let WebMonterey know and they will take care of it.**",
     ],
   },
 };

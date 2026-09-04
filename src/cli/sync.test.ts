@@ -44,6 +44,7 @@ test('the package ships exactly the skills the release claims', () => {
     'start',
     'traps',
     'upgrade',
+    'webmaster',
   ]);
 });
 

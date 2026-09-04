@@ -435,6 +435,27 @@ test('a registry keyed by name rather than by number is understood', () => {
   assert.equal(runCheck('block-types-registered', ctx).status, 'pass');
 });
 
+test('the chrome exports in a registry are not read as block types', () => {
+  /*
+   * `header`, `footer`, `pageHeader`, `structuredData` and `webmasterPage` sit in the same file
+   * as `blocks`, in either export form. None is a block type, and none may make the check trip
+   * over a registry that is otherwise complete.
+   */
+  const ctx = base({
+    registry: [
+      `import WebmasterPage from './general/webmaster-page.astro';`,
+      `export const blocks = { 'content-000001': C };`,
+      `export const registeredTypes = () => Object.keys(blocks);`,
+      `export { default as pageHeader } from './general/page-header.astro';`,
+      `export const webmasterPage = WebmasterPage;`,
+    ].join('\n'),
+    content: new Map([
+      ['src/content/pages/home.json', JSON.stringify({ blocks: [{ type: 'content-000001' }] })],
+    ]),
+  });
+  assert.equal(runCheck('block-types-registered', ctx).status, 'pass');
+});
+
 test('a site that has not launched only gets a warning about placeholders', () => {
   /*
    * `webm new` seeds every one of these, so a freshly scaffolded site has the full set. The

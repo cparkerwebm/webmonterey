@@ -11,6 +11,53 @@ build. See `/webm:upgrade`.
 
 ---
 
+## 1.4.0 — 2026-09-04
+
+### Added
+
+- **A site can lay out the `/webmaster` page itself.** Export `webmasterPage` from
+  `src/components/registry.ts` - an Astro component receiving
+  `{ title, description, intro, body }` - and the page renders it in place of the built-in
+  `<h1>` and stack of paragraphs. `intro` and each `body` entry are HTML, rendered with
+  `set:html` - the agency link is already in `intro`; `title` and `description` are text. The route, the copy, the document title, the meta
+  description, the share image and the agency JSON-LD stay the package's, so the page says the
+  same thing on every site and looks like the site it is on. Until now a site whose legal pages
+  used a richer document layout got a `/webmaster` that looked like a different site, and adding
+  its own `src/pages/webmaster.astro` collided with the injected route. The component carries no
+  copy of its own: the words are still `copy.webmaster` in `webmonterey.json`.
+
+  **`/webm:webmaster` is the skill**, materialized on the next `webm sync` - it carries a
+  complete reference component, the registry line and the checks to run on the built page, so a
+  site session has something to copy rather than a description. `/webm:new-component` sends a
+  session there the moment a site gains its document block, and `/webm:start` and
+  `/webm:launch` both point at it, so on a new site it happens in sequence; on an existing site
+  the upgrade lists it as a new skill.
+  The props are exported as `WebmasterPageProps` from
+  `@cparkerwebm/webmonterey/webmonterey/webmaster`.
+
+  **Nothing changes on a site that does not export it.** The built-in layout, `pageHeader`
+  seam included, renders as before, and examples/minimal asserts the whole `<main>` as a literal
+  so it cannot drift.
+
+### Changed
+
+- **The `/webmaster` copy.** "This custom website was designed, built and managed by
+  WebMonterey, a webmaster service in Monterey, California. WebMonterey handles the hosting,
+  security, strategy and ongoing care of the site…" - _custom_ added, _maintenance_ dropped,
+  _updates_ is now _strategy_ - and the contact paragraph is bold. `copy.webmaster.intro` and
+  `copy.webmaster.body` now take the same inline subset as page prose (`**bold**`, `_italic_`,
+  `[text](/url)`), which is how the bold is expressed. A site overriding `copy.webmaster` in
+  `webmonterey.json` keeps its own words; one that does not gets these. The agency's
+  description in the page's JSON-LD drops _maintenance_ too.
+
+### Fixed
+
+- **"managed byWebMonterey".** The built-in `/webmaster` intro had no space before the agency
+  link - Astro drops the whitespace between an expression and an element on separate lines. It
+  reads "managed by WebMonterey" now.
+
+---
+
 ## 1.3.0 — 2026-09-02
 
 ### Changed

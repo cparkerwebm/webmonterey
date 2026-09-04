@@ -99,6 +99,11 @@ to say, and this is where it gets decided - once, with the client's real details
 4. **Validate** the built home page and one inner page with Google's Rich Results Test before
    moving on.
 
+5. **Look at `/webmaster`.** The package injects it on every site, with its own share image and
+   JSON-LD. If this site's document pages - privacy, terms - use a richer layout than an `<h1>`
+   and a stack of paragraphs, run `/webm:webmaster`: it exports a layout component from the
+   registry so the page looks like the site it is on, with the package's copy intact.
+
 ## 3. Turnstile
 
 If the site has a form: create the widget in the Cloudflare dashboard (**Turnstile → Add

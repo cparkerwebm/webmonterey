@@ -388,6 +388,15 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
                          */
                         `export const pageHeader = mod.pageHeader ?? null;`,
                         /*
+                         * THE /webmaster PAGE'S BODY. The route, the copy, the share image and
+                         * the agency graph stay the package's; a site whose document pages use
+                         * a richer layout than an <h1> and a stack of paragraphs hands over the
+                         * layout only. Without this a site's own src/pages/webmaster.astro
+                         * collides with the injected route, and on one site the injected route
+                         * won.
+                         */
+                        `export const webmasterPage = mod.webmasterPage ?? null;`,
+                        /*
                          * THE SITE'S JSON-LD, rendered into <head> on every route. The package
                          * emits none of its own: what a business claims about itself is the
                          * site's to say, and every attempt to say it generically grew a field a

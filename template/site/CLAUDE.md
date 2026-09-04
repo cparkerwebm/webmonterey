@@ -231,7 +231,10 @@ webmonterey.json            domain, client name, environment, features.
 src/
   components/               EVERY visible component. The package ships none.
     registry.ts             maps a block `type` to its component. A block whose type is
-                            not here renders as nothing, silently.
+                            not here renders as nothing, silently. Also exports the chrome:
+                            `header`, `footer`, `panels`, `pageHeader`, `structuredData`, and
+                            `webmasterPage` - the body of /webmaster, laid out like this
+                            site's document pages, with the package's copy handed in.
   content/pages/*.json      the words. One file per route; home.json is `/`.
   forms/*.json              form definitions. Filename is the form id.
   actions/index.ts          re-exports the package pipeline. Wrap to customize.
@@ -264,6 +267,7 @@ replaced wholesale. This client's own skills go beside it at `.claude/skills/<na
 | `/webm:start`         | standing a new site up: repo, Cloudflare resources, first deploy          |
 | `/webm:launch`        | launch checklist: structured data, sending domain, secrets, DNS, cutover  |
 | `/webm:upgrade`       | taking a new package version                                              |
+| `/webm:webmaster`     | laying out the package's `/webmaster` page like this site's own pages     |
 
 Content edits: branch, edit `src/content/pages/*.json`, `npm run check`, push — the branch
 preview is the client's review link. Merge when approved. Never change a block's `type`.

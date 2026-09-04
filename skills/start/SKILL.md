@@ -173,5 +173,6 @@ client can click anything. **Every build of this site is a preview while `enviro
 flips it, and that flip is what makes the site indexable. On a launched site the production
 branch is `main`; anything else previews.
 
-Next: `/webm:new-component` for each block, then `/webm:launch` when the site is
+Next: `/webm:new-component` for each block, `/webm:webmaster` once the site has its document
+block so the package's `/webmaster` page shares its layout, then `/webm:launch` when the site is
 content-complete and approved on a preview.

@@ -219,7 +219,71 @@ try {
   design.color = { ...(design.color ?? {}), action: { base: '#123456' } };
   writeFileSync(join(site, 'design.json'), JSON.stringify(design, null, 2) + '\n');
 
+  /*
+   * THE /webmaster BODY. The page before this build is the package's own layout; this hands the
+   * body to a site component and keeps everything else. Both halves are asserted: the site's
+   * markup is in, and the <head> the package owns - title, share image, agency graph - is the
+   * same bytes it was without the export.
+   */
+  const webmasterBefore = read('webmaster/index.html');
+  /*
+   * The tags the package writes, not the whole <head>: this same build retints design.json and
+   * adds custom CSS, so the stylesheet hash changes for reasons that are nothing to do with the
+   * seam.
+   */
+  const owned = (html) =>
+    (
+      html
+        .slice(0, html.indexOf('</head>'))
+        .match(
+          /<title>[^<]*<\/title>|<meta name="description"[^>]*>|<meta property="og:[^>]*>|<script type="application\/ld\+json">[\s\S]*?<\/script>/g,
+        ) ?? []
+    ).join('\n');
+  execFileSync('mkdir', ['-p', join(site, 'src/components/general')]);
+  writeFileSync(
+    join(site, 'src/components/general/webmaster-page.astro'),
+    `---\nconst { title, intro, body } = Astro.props;\n---\n` +
+      `<article class="doc" data-child="CHILD_WEBMASTER_WINS">\n` +
+      `  <h1 class="doc__title">{title}</h1>\n` +
+      `  <p set:html={intro} />\n` +
+      `  {body.map((p) => <p set:html={p} />)}\n` +
+      `</article>\n`,
+  );
+  writeFileSync(
+    join(site, 'src/components/registry.ts'),
+    readFileSync(join(site, 'src/components/registry.ts'), 'utf8') +
+      `\nexport { default as webmasterPage } from './general/webmaster-page.astro';\n`,
+  );
+
   run('npx', ['astro', 'build'], site);
+
+  const webmasterAfter = read('webmaster/index.html');
+  check(
+    "the site's webmasterPage renders the /webmaster body",
+    webmasterAfter.includes('CHILD_WEBMASTER_WINS') &&
+      webmasterAfter.includes('<h1 class="doc__title">Our Webmaster</h1>') &&
+      /<p><strong>If you have a question/.test(webmasterAfter),
+    'the registry export was ignored and the built-in layout shipped',
+  );
+  check(
+    'the intro reaches the site component with the agency link resolved',
+    /<p>[^<]* <a href="https:\/\/webmonterey\.com\/\?utm_source=client[^"]*" target="_blank" rel="noopener">WebMonterey<\/a>/.test(
+      webmasterAfter,
+    ),
+    'the outbound link, its UTMs or its attributes did not survive the hand-off',
+  );
+  check(
+    'the built-in webmaster layout is gone when the site owns the body',
+    !/<div class="webm-stack">/.test(webmasterAfter),
+    'both layouts rendered',
+  );
+  check(
+    'the <head> the package owns is unchanged by the seam',
+    owned(webmasterAfter) === owned(webmasterBefore) &&
+      owned(webmasterAfter).includes('#organization') &&
+      owned(webmasterAfter).includes('/webmaster/og.png'),
+    'title, description, share image or JSON-LD changed when the site took the body',
+  );
 
   check(
     "the site's own 404.astro beats the injected one",

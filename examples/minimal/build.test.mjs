@@ -157,6 +157,28 @@ test('the webmaster page declares its own share image and structured data', () =
   assert.match(page, /<h1>Our Webmaster<\/h1>/);
 });
 
+test('without a webmasterPage export the page body is the built-in layout, byte for byte', () => {
+  /*
+   * A site that exports `webmasterPage` from its registry takes over the body; this example
+   * does not, so it must get exactly the layout it always has. The whole <main>, as a literal:
+   * a looser assertion would let the fallback drift under the seam without anything noticing.
+   * The one space before the agency link is not a typo - the page shipped without it. The
+   * <strong> is the copy's own `**bold**`, through the inline prose renderer.
+   */
+  const page = readFileSync(join(DIST, 'webmaster/index.html'), 'utf8');
+  const main = page.match(/<main id="webm-main" tabindex="-1">([\s\S]*?)<\/main>/)?.[1];
+  const link =
+    'https://webmonterey.com/?utm_source=client&amp;utm_medium=website&amp;utm_campaign=webmaster&amp;utm_content=minimal_example_com';
+  assert.equal(
+    main,
+    '<section class="webm-section" data-space="sm"><div class="webm-container" data-width="text"><h1>Our Webmaster</h1></div></section>' +
+      '<section class="webm-section" data-space="lg"><div class="webm-container" data-width="text"><div class="webm-stack">' +
+      `<p>This custom website was designed, built and managed by <a href="${link}" target="_blank" rel="noopener">WebMonterey</a>, a webmaster service in Monterey, California. WebMonterey handles the hosting, security, strategy and ongoing care of the site so that we can focus on what we do.</p>` +
+      '<p><strong>If you have a question about this website, notice something that isn&#39;t working, or have trouble using a page, please let WebMonterey know and they will take care of it.</strong></p>' +
+      '</div></div></section>',
+  );
+});
+
 test('the sitemap lists the webmaster page', () => {
   const sitemap = readFileSync(join(DIST, 'sitemap-0.xml'), 'utf8');
   assert.ok(sitemap.includes('/webmaster'), 'the page must be in the sitemap');

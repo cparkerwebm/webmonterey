@@ -87,6 +87,17 @@ declare module 'virtual:webm/registry' {
    */
   export const pageHeader: AstroComponentFactory | null;
   /**
+   * The body of the `/webmaster` page, when the site wants it laid out like its own document
+   * pages rather than as the package's `<h1>` and stack of paragraphs.
+   *
+   * Receives `WebmasterPageProps` from `includes/webmonterey/webmaster/webmaster.ts`:
+   * `{ title, description, intro, body }`, the merged `copy.webmaster` - `intro` and `body` as
+   * HTML through the inline prose renderer, the agency link already in `intro`. The component
+   * lays the words out and carries no copy of its own. The route, the `<head>`, the share image and the JSON-LD stay the package's.
+   * Null means the built-in layout, `pageHeader` seam included.
+   */
+  export const webmasterPage: AstroComponentFactory | null;
+  /**
    * The site's JSON-LD, rendered into <head> on every indexable route. The package emits none of
    * its own; this component composes a graph from the builders in
    * `@cparkerwebm/webmonterey/structured-data`, and receives `{ title, description, image }`

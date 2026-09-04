@@ -87,7 +87,7 @@ quiet.
 | `src/content/pages/*.json`, `src/forms/*.json` | The words and the forms. |
 | `src/styles/custom/` | The override seam. `webm.components.custom` beats `webm.components.core` at equal specificity. |
 | `src/pages/webapp/` | The web app, if the site grows one (§5). |
-| The registry: `blocks`, `header`, `footer`, `panels`, `pageHeader`, `structuredData` | How a site hands the package its chrome and its claims. |
+| The registry: `blocks`, `header`, `footer`, `panels`, `pageHeader`, `webmasterPage`, `structuredData` | How a site hands the package its chrome, its claims, and the shape of the one page the package writes. |
 | `public/`, `wrangler.jsonc`, `migrations/` | Copied verbatim, real resource IDs, the site's own schema. |
 
 ---
@@ -203,7 +203,7 @@ proved a rule there never shipped; that test is permanent.
 | --- | --- | --- |
 | `/_actions/*` | Astro | The form endpoint. Always in `run_worker_first`. |
 | `/webm` | package | The component scratch page. **Dev server only** — it does not exist in a build. |
-| `/webmaster`, `/webmaster/og.png` | package | The page every site has: who built it, who to call. Indexable, in the sitemap; the footer credit links here and this page carries the one outbound link to the agency, with its UTM parameters. Its share image is served from the package so a redesign reaches every site on `npm update`. Off switch: `webmaster: false`. |
+| `/webmaster`, `/webmaster/og.png` | package | The page every site has: who built it, who to call. Indexable, in the sitemap; the footer credit links here and this page carries the one outbound link to the agency, with its UTM parameters. Its share image is served from the package so a redesign reaches every site on `npm update`. The body is the site's if it exports `webmasterPage` from its registry: the component receives the merged copy (`{ title, description, intro, body }`; `intro` and `body` as HTML, the agency link already in `intro`) and lays it out like the site's other document pages, while the route, the copy, the `<head>`, the share image and the graph stay the package's. Without the export, an `<h1>` (or the site's `pageHeader`) and a stack of paragraphs. Off switch: `webmaster: false`. |
 | `/<app.path>/*` | site | The web app. Reserved on every site; see below. |
 
 ### The web app namespace, reserved from day one

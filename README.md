@@ -20,6 +20,16 @@ the reset, the Cloudflare includes, the consent system, the form pipeline, the r
 It ships **zero visible components**. Every block a visitor sees is built per client, in that
 client's repo. Every default has a documented way to opt out of it.
 
+A site hands the package its components through `src/components/registry.ts`: `blocks` for the
+block router, `header`, `footer` and `panels` for the chrome, `pageHeader` in place of the
+router's plain `<h1>`, `structuredData` for the site's JSON-LD, and `webmasterPage` for the body
+of the `/webmaster` page. That last one is the seam for a site whose document pages have a richer
+layout than a heading and a stack of paragraphs: the component receives the merged copy
+(`{ title, description, intro, body }`; `intro` and `body` are HTML, the agency link already in
+`intro`) and lays it out; the route, the words, the `<head>`, the share image and the agency graph
+stay the package's. It carries no copy of its own - the words are overridden through
+`copy.webmaster` in `webmonterey.json`, not in the component.
+
 **The package is edited in this repo, and only here.** A session in a client site that finds a
 package bug does not reach into `node_modules` or into this checkout; its deliverable is a
 description of the fix, run later in a session opened here, and the site takes the result with

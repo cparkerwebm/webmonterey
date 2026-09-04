@@ -2,7 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { AGENCY, contentTag, CREDIT_TEXT, creditUrl, WEBMASTER_PATH } from './webmaster.ts';
+import {
+  AGENCY,
+  contentTag,
+  CREDIT_TEXT,
+  creditUrl,
+  introHtml,
+  webmasterPageProps,
+  WEBMASTER_PATH,
+} from './webmaster.ts';
 
 /*
  * Webmaster.astro read as SOURCE, because it cannot be imported here: an .astro file only
@@ -71,4 +79,56 @@ test('an internal link does not open a new tab and carries no rel', () => {
   assert.doesNotMatch(anchor(), /target=/);
   assert.doesNotMatch(anchor(), /rel=/);
   assert.doesNotMatch(template, /opens in a new tab/);
+});
+
+/* ── the intro paragraph, as one HTML string for a site that owns the layout ─────────────── */
+
+test('introHtml is before, a space, the agency link, then after', () => {
+  const html = introHtml({ before: 'Built by', after: ', a service.' }, 'https://x.test/?a=1&b=2');
+  assert.equal(
+    html,
+    'Built by <a href="https://x.test/?a=1&amp;b=2" target="_blank" rel="noopener">WebMonterey</a>, a service.',
+  );
+});
+
+test('introHtml escapes the copy and the href', () => {
+  const html = introHtml({ before: '<b>a & b</b>', after: '"q"' }, 'https://x.test/?"');
+  assert.ok(!html.includes('<b>'), 'copy markup must not pass through');
+  assert.ok(html.includes('&lt;b&gt;a &amp; b&lt;/b&gt;'));
+  assert.ok(html.includes('href="https://x.test/?&quot;"'));
+  assert.ok(html.endsWith('&quot;q&quot;'));
+});
+
+test('the copy carries the inline prose subset, in the intro and the body', () => {
+  const props = webmasterPageProps(
+    {
+      title: 'T',
+      description: 'D',
+      intro: { before: 'Built by', after: ', **really**.' },
+      body: ["**If it isn't working, say so.**", 'See [the policy](/privacy).'],
+    },
+    'https://x.test/',
+  );
+  assert.equal(props.title, 'T');
+  assert.equal(props.description, 'D');
+  assert.ok(props.intro.endsWith('</a>, <strong>really</strong>.'));
+  assert.deepEqual(props.body, [
+    '<strong>If it isn&#39;t working, say so.</strong>',
+    'See <a href="/privacy">the policy</a>.',
+  ]);
+});
+
+test('the built-in page renders the same intro string a site layout receives', () => {
+  /*
+   * One source for the agency link. The page used to build its own <a> in the template, which
+   * is how a second copy of the attributes would drift; now both layouts render introHtml.
+   */
+  const page = readFileSync(new URL('../../../pages/webmaster.astro', import.meta.url), 'utf8');
+  const template = page.slice(page.lastIndexOf('---'));
+  assert.match(template, /<p set:html=\{props\.intro\} \/>/);
+  assert.doesNotMatch(template, /<a\s/, 'the page must not assemble the agency link itself');
+  const html = introHtml({ before: '', after: '' }, 'https://x.test/');
+  assert.match(html, /target="_blank"/);
+  assert.match(html, /rel="noopener"/);
+  assert.doesNotMatch(html, /noreferrer/);
 });

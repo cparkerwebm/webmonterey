@@ -83,3 +83,9 @@ npm run preview   # NOT dev - preview is a real build on real workerd
 
 `dev` cannot detect CSS bundling, cascade order, or the asset router. Every trap worth catching is
 invisible in `dev` and visible in `preview`. See `/webm:traps`.
+
+## If this is the site's document block
+
+A long-form block - the one the privacy and terms pages use - is also the layout the package's
+`/webmaster` page should have. The moment that block exists, run `/webm:webmaster`: it exports a
+layout component built on this block, so `/webmaster` stops looking like a different site.

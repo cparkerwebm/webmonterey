@@ -27,17 +27,25 @@ import { copy } from '../includes/webmonterey/copy.ts';
 import {
   AGENCY,
   creditUrl,
+  webmasterPageProps,
   WEBMASTER_OG_PATH,
 } from '../includes/webmonterey/webmaster/webmaster.ts';
 import { domain, hasDomain } from '../includes/webmonterey/site.ts';
 import { compact, renderJsonLd } from '../includes/webmonterey/structured-data/nodes.ts';
-import { pageHeader } from 'virtual:webm/registry';
+import { pageHeader, webmasterPage } from 'virtual:webm/registry';
 import ogImage from 'virtual:webm/webmaster-og';
 import build from 'virtual:webm/build';
 
 const PageHeader = pageHeader;
+const WebmasterPage = webmasterPage;
 const text = copy.webmaster;
 const agencyHref = hasDomain ? creditUrl(domain, 'website') : AGENCY.url;
+/*
+ * The words, resolved once for both layouts: the intro with the agency link in it, every
+ * paragraph through the inline prose renderer, so `**bold**` in copy.webmaster works here
+ * exactly as it does in page JSON.
+ */
+const props = webmasterPageProps(text, agencyHref);
 
 /*
  * The graph needs a real origin for stable @id values, which is the same gate the canonical tag
@@ -85,37 +93,51 @@ if (Astro.site && !build.preview) {
 
   {
     /*
-     * The site's page header if it declares one, so this page looks like every other page on the
-     * site; the router's plain <h1> otherwise. Same fallback the block router uses.
+     * THE BODY IS THE SITE'S IF IT WANTS IT. A site whose document pages - privacy, terms - use a
+     * richer layout than an <h1> and a stack of paragraphs exports `webmasterPage` from its
+     * registry and gets the merged copy handed to it: the same title, description and paragraphs
+     * as below, with the agency link already resolved into `intro`. Everything above this
+     * expression - the route, the <head>, the share image, the agency graph - stays the
+     * package's, so the page reads the same on every site and looks like the one it is on.
      */
-    PageHeader ? (
-      <PageHeader title={text.title} description={text.description} />
+    WebmasterPage ? (
+      <WebmasterPage {...props} />
     ) : (
-      <section class="webm-section" data-space="sm">
-        <div class="webm-container" data-width="text">
-          <h1>{text.title}</h1>
-        </div>
-      </section>
-    )
-  }
-
-  <section class="webm-section" data-space="lg">
-    <div class="webm-container" data-width="text">
-      <div class="webm-stack">
+      <Fragment>
         {
           /*
-           * The agency is named as a link in the first paragraph - the one outbound link on the
-           * site, followed, with the UTM parameters. Opens in a new tab because it leaves the
-           * site; noopener without noreferrer, because the referrer is the attribution.
+           * The site's page header if it declares one, so this page looks like every other page
+           * on the site; the router's plain <h1> otherwise. Same fallback the block router uses.
            */
+          PageHeader ? (
+            <PageHeader title={text.title} description={text.description} />
+          ) : (
+            <section class="webm-section" data-space="sm">
+              <div class="webm-container" data-width="text">
+                <h1>{text.title}</h1>
+              </div>
+            </section>
+          )
         }
-        <p>
-          {text.intro.before}
-          <a href={agencyHref} target="_blank" rel="noopener">{AGENCY.name}</a>
-          {text.intro.after}
-        </p>
-        {text.body.map((paragraph) => <p>{paragraph}</p>)}
-      </div>
-    </div>
-  </section>
+
+        <section class="webm-section" data-space="lg">
+          <div class="webm-container" data-width="text">
+            <div class="webm-stack">
+              {/*
+               * The agency is named as a link in the first paragraph - the one outbound link
+               * on the site, followed, with the UTM parameters. Opens in a new tab because it
+               * leaves the site; noopener without noreferrer, because the referrer is the
+               * attribution. See introHtml in webmaster.ts - the same string a site's own
+               * layout receives, so the two cannot disagree about the link.
+               */}
+              <p set:html={props.intro} />
+              {props.body.map((paragraph) => (
+                <p set:html={paragraph} />
+              ))}
+            </div>
+          </div>
+        </section>
+      </Fragment>
+    )
+  }
 </Base>

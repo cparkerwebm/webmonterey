@@ -25,6 +25,8 @@
  * means a change to the name, the address or a profile is one edit.
  */
 
+import { escapeHtml, renderInline } from '../prose/inline.ts';
+
 /** The credit wording. Rendered verbatim on the site and in email. */
 export const CREDIT_TEXT = 'Powered by WebMonterey';
 
@@ -44,7 +46,7 @@ export const AGENCY = {
   name: 'WebMonterey',
   url: 'https://webmonterey.com/',
   description:
-    'A webmaster maintenance service in Monterey, California: design, build, hosting, security and ongoing care for small-business websites.',
+    'A webmaster service in Monterey, California: design, build, hosting, security and ongoing care for small-business websites.',
   address: { addressLocality: 'Monterey', addressRegion: 'CA', addressCountry: 'US' },
   sameAs: [
     /* The Google Business Profile, by its Knowledge Graph id - the stable form of the share link. */
@@ -86,4 +88,58 @@ export function creditUrl(domain: string, medium: CreditMedium = 'website'): str
   });
 
   return `${AGENCY.url}?${params}`;
+}
+
+/**
+ * What the site's `webmasterPage` component receives, when a site exports one from its
+ * registry: the merged copy, already resolved. The component lays it out and carries no copy of
+ * its own - the words are the package's on every site, the shape of the page is the client's.
+ *
+ * `intro` and `body` are HTML, rendered with `set:html`. They are the output of `renderInline`,
+ * so a paragraph in `copy.webmaster` may carry the same inline subset page prose does -
+ * `**bold**`, `_italic_`, `[text](/url)` - and everything else is escaped.
+ */
+export interface WebmasterPageProps {
+  /** `copy.webmaster.title`, also the document title. Text. */
+  title: string;
+  /** `copy.webmaster.description`, also the meta description. Text. */
+  description: string;
+  /** The first paragraph's inner HTML, with the agency link already resolved. */
+  intro: string;
+  /** The remaining paragraphs' inner HTML, one entry per `<p>`. */
+  body: string[];
+}
+
+/**
+ * The intro paragraph's inner HTML: `before` <a>WebMonterey</a> `after`.
+ *
+ * ONE STRING, because it is the only part of the copy that is not plain text. A site taking
+ * over the page layout still gets the agency link exactly as the built-in page renders it - a
+ * followed link, opening in a new tab, `noopener` without `noreferrer` because the referrer is
+ * the attribution - rather than reassembling three fragments and forgetting one of the
+ * attributes. The built-in page renders this same string, so the two cannot drift. The space
+ * between `before` and the link is deliberate: Astro drops the whitespace between an expression
+ * and an element on separate lines, and "managed byWebMonterey" shipped.
+ */
+export function introHtml(intro: { before: string; after: string }, href: string): string {
+  const link = `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(AGENCY.name)}</a>`;
+  return `${renderInline(intro.before)} ${link}${renderInline(intro.after)}`;
+}
+
+/** The whole prop set, from the merged copy and the attributed agency link. */
+export function webmasterPageProps(
+  text: {
+    title: string;
+    description: string;
+    intro: { before: string; after: string };
+    body: string[];
+  },
+  href: string,
+): WebmasterPageProps {
+  return {
+    title: text.title,
+    description: text.description,
+    intro: introHtml(text.intro, href),
+    body: text.body.map(renderInline),
+  };
 }
