@@ -155,6 +155,16 @@ test('the webmaster page declares its own share image and structured data', () =
   assert.match(page, /application\/ld\+json/);
   assert.match(page, /https:\/\/webmonterey\.com\/#organization/, 'points at the agency entity');
   assert.match(page, /<h1>Our Webmaster<\/h1>/);
+  /*
+   * The client's name is in the <head> too, not only the body: a meta description shared by
+   * every site in the fleet is the duplicate-content problem the placeholder exists to solve, and
+   * a literal "{client}" anywhere on the page is the placeholder not being filled.
+   */
+  assert.match(
+    page,
+    /<meta name="description" content="This Minimal Example custom website was designed/,
+  );
+  assert.doesNotMatch(page, /\{client\}/, 'an unfilled {client} placeholder reached the page');
 });
 
 test('without a webmasterPage export the page body is the built-in layout, byte for byte', () => {
@@ -163,7 +173,8 @@ test('without a webmasterPage export the page body is the built-in layout, byte 
    * does not, so it must get exactly the layout it always has. The whole <main>, as a literal:
    * a looser assertion would let the fallback drift under the seam without anything noticing.
    * The one space before the agency link is not a typo - the page shipped without it. The
-   * <strong> is the copy's own `**bold**`, through the inline prose renderer.
+   * <strong> is the copy's own `**bold**`, through the inline prose renderer. "Minimal Example"
+   * is `client` from webmonterey.json, filled into every `{client}` in the copy.
    */
   const page = readFileSync(join(DIST, 'webmaster/index.html'), 'utf8');
   const main = page.match(/<main id="webm-main" tabindex="-1">([\s\S]*?)<\/main>/)?.[1];
@@ -173,8 +184,9 @@ test('without a webmasterPage export the page body is the built-in layout, byte 
     main,
     '<section class="webm-section" data-space="sm"><div class="webm-container" data-width="text"><h1>Our Webmaster</h1></div></section>' +
       '<section class="webm-section" data-space="lg"><div class="webm-container" data-width="text"><div class="webm-stack">' +
-      `<p>This custom website was designed, built and managed by <a href="${link}" target="_blank" rel="noopener">WebMonterey</a>, a webmaster service in Monterey, California. WebMonterey handles the hosting, security, strategy and ongoing care of the site so that we can focus on what we do.</p>` +
-      '<p><strong>If you have a question about this website, notice something that isn&#39;t working, or have trouble using a page, please let WebMonterey know and they will take care of it.</strong></p>' +
+      `<p>This Minimal Example custom website was designed, built and managed by <a href="${link}" target="_blank" rel="noopener">WebMonterey</a>, a webmaster service in Monterey, California. WebMonterey handles web hosting, security, strategy and ongoing care of our site.</p>` +
+      '<p><strong>If you have a question about the Minimal Example website, notice something that isn&#39;t working, or have trouble using a page, please let WebMonterey know and they will take care of it.</strong></p>' +
+      `<p><a class="webm-webmaster-cta" href="${link}" target="_blank" rel="noopener">Visit WebMonterey</a></p>` +
       '</div></div></section>',
   );
 });

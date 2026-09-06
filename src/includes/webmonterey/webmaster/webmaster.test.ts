@@ -10,7 +10,10 @@ import {
   introHtml,
   webmasterPageProps,
   WEBMASTER_PATH,
+  AGENCY_LINK_ATTRS,
+  personalize,
 } from './webmaster.ts';
+import { DEFAULT_COPY } from '../copy-defaults.ts';
 
 /*
  * Webmaster.astro read as SOURCE, because it cannot be imported here: an .astro file only
@@ -99,16 +102,16 @@ test('introHtml escapes the copy and the href', () => {
   assert.ok(html.endsWith('&quot;q&quot;'));
 });
 
+const TEXT = {
+  title: 'T',
+  description: 'D',
+  intro: { before: 'Built by', after: ', **really**.' },
+  body: ["**If it isn't working, say so.**", 'See [the policy](/privacy).'],
+  cta: 'Visit',
+};
+
 test('the copy carries the inline prose subset, in the intro and the body', () => {
-  const props = webmasterPageProps(
-    {
-      title: 'T',
-      description: 'D',
-      intro: { before: 'Built by', after: ', **really**.' },
-      body: ["**If it isn't working, say so.**", 'See [the policy](/privacy).'],
-    },
-    'https://x.test/',
-  );
+  const props = webmasterPageProps(TEXT, 'https://x.test/');
   assert.equal(props.title, 'T');
   assert.equal(props.description, 'D');
   assert.ok(props.intro.endsWith('</a>, <strong>really</strong>.'));
@@ -118,15 +121,68 @@ test('the copy carries the inline prose subset, in the intro and the body', () =
   ]);
 });
 
+test('the cta is the copy label and the same attributed href the intro links to', () => {
+  const props = webmasterPageProps(TEXT, 'https://x.test/?utm_source=client');
+  assert.deepEqual(props.cta, { label: 'Visit', href: 'https://x.test/?utm_source=client' });
+  assert.match(props.intro, /href="https:\/\/x\.test\/\?utm_source=client"/);
+});
+
+/* ── the client's name, so no two sites carry the same paragraph ────────────────────────── */
+
+test('personalize fills {client} and leaves other braces alone', () => {
+  assert.equal(personalize('This {client} site, {other}.', 'Acme'), 'This Acme site, {other}.');
+});
+
+test('personalize drops the placeholder and its space on an unconfigured site', () => {
+  assert.equal(personalize('This {client} custom website', ''), 'This custom website');
+  assert.equal(personalize('about the {client} website', ''), 'about the website');
+  assert.equal(personalize('{client} is here', ''), 'is here');
+});
+
+test('the client name reaches every prop, and is escaped like text', () => {
+  const props = webmasterPageProps(
+    {
+      title: '{client} webmaster',
+      description: 'About {client}',
+      intro: { before: 'The {client} site, by', after: ', for {client}.' },
+      body: ['Ask {client}.'],
+      cta: 'Visit, {client}',
+    },
+    'https://x.test/',
+    'Smith & Sons',
+  );
+  assert.equal(props.title, 'Smith & Sons webmaster');
+  assert.equal(props.description, 'About Smith & Sons');
+  assert.ok(props.intro.startsWith('The Smith &amp; Sons site, by <a '), props.intro);
+  assert.ok(props.intro.endsWith('</a>, for Smith &amp; Sons.'), props.intro);
+  assert.deepEqual(props.body, ['Ask Smith &amp; Sons.']);
+  assert.equal(props.cta.label, 'Visit, Smith & Sons');
+});
+
+test('the default copy names the client in the description, the intro and the contact line', () => {
+  const props = webmasterPageProps(DEFAULT_COPY.webmaster, 'https://x.test/', 'Acme Co');
+  assert.match(props.description, /^This Acme Co custom website/);
+  assert.match(props.intro, /^This Acme Co custom website was designed, built and managed by <a /);
+  assert.match(props.body[0]!, /about the Acme Co website/);
+  assert.equal(props.cta.label, 'Visit WebMonterey');
+});
+
 test('the built-in page renders the same intro string a site layout receives', () => {
   /*
    * One source for the agency link. The page used to build its own <a> in the template, which
-   * is how a second copy of the attributes would drift; now both layouts render introHtml.
+   * is how a second copy of the attributes would drift; now both layouts render introHtml. The
+   * one <a> the template does write is the button, and its attributes are the spread constant,
+   * never typed out.
    */
   const page = readFileSync(new URL('../../../pages/webmaster.astro', import.meta.url), 'utf8');
-  const template = page.slice(page.lastIndexOf('---'));
+  const template = page.slice(page.indexOf('---', 3));
   assert.match(template, /<p set:html=\{props\.intro\} \/>/);
-  assert.doesNotMatch(template, /<a\s/, 'the page must not assemble the agency link itself');
+  const anchors = template.match(/<a\s[^>]*>/g) ?? [];
+  assert.equal(anchors.length, 1, 'the template writes exactly one link: the button');
+  assert.match(anchors[0]!, /href=\{props\.cta\.href\}/);
+  assert.match(anchors[0]!, /\{\.\.\.AGENCY_LINK_ATTRS\}/);
+  assert.doesNotMatch(anchors[0]!, /target=|rel=/, 'attributes come from the constant only');
+  assert.deepEqual(AGENCY_LINK_ATTRS, { target: '_blank', rel: 'noopener' });
   const html = introHtml({ before: '', after: '' }, 'https://x.test/');
   assert.match(html, /target="_blank"/);
   assert.match(html, /rel="noopener"/);

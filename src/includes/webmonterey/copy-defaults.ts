@@ -71,11 +71,18 @@ export interface Copy {
    * The /webmaster page. `intro` wraps the agency link: `before` <a>WebMonterey</a> `after`.
    * `intro` and `body` take the inline prose subset - `**bold**`, `_italic_`, `[text](/url)`.
    */
+  /*
+   * Every string here may carry `{client}`, filled with the site's client name at render. It is
+   * what makes the page different on every site: the same paragraph on a hundred sites is
+   * duplicate content, and a page that names the client is not.
+   */
   webmaster: {
     title: string;
     description: string;
     intro: { before: string; after: string };
     body: string[];
+    /** The label of the outbound button to the agency. */
+    cta: string;
   };
 }
 
@@ -138,16 +145,17 @@ export const DEFAULT_COPY: Copy = {
   webmaster: {
     title: 'Our Webmaster',
     description:
-      'This custom website was designed, built and managed by WebMonterey, a webmaster service in Monterey, California.',
+      'This {client} custom website was designed, built and managed by WebMonterey, a webmaster service in Monterey, California.',
     intro: {
-      before: 'This custom website was designed, built and managed by',
+      before: 'This {client} custom website was designed, built and managed by',
       after:
-        ', a webmaster service in Monterey, California. WebMonterey handles the hosting, security, strategy and ongoing care of the site so that we can focus on what we do.',
+        ', a webmaster service in Monterey, California. WebMonterey handles web hosting, security, strategy and ongoing care of our site.',
     },
     /* Bold on purpose: the contact instruction is the paragraph a visitor with a problem needs. */
     body: [
-      "**If you have a question about this website, notice something that isn't working, or have trouble using a page, please let WebMonterey know and they will take care of it.**",
+      "**If you have a question about the {client} website, notice something that isn't working, or have trouble using a page, please let WebMonterey know and they will take care of it.**",
     ],
+    cta: 'Visit WebMonterey',
   },
 };
 

@@ -481,3 +481,6 @@ a page.
 | 21 | A major ships a codemod and names what a site must do | 12 |
 | 22 | The platform is elsewhere, and a site must render with it down | 13 |
 | 23 | American spelling in prose; the code already was | — |
+| 24 | The integration injects no route the site already has a file for; the 404 is the first | 6 |
+| 25 | TypeScript stays where `@astrojs/check` and Astro's language tooling are; 7.x waits for 7.1 | 12 |
+| 26 | The `/webmaster` copy names the client; `{client}` is filled everywhere the copy is used | 7 |

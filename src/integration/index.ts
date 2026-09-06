@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 
 import { compileToCss } from '../design/compile.ts';
 import { imageSize } from './image-size.ts';
-import { loadForms, loadSiteFiles, resolveSiteUrl } from './config.ts';
+import { loadForms, loadSiteFiles, resolveSiteUrl, sitePage } from './config.ts';
 import {
   APP_DIR,
   appEnabled,
@@ -251,6 +251,20 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
              */
             optimizeDeps: {
               exclude: ['@astrojs/cloudflare/handler'],
+              /*
+               * REBUILD THE PRE-BUNDLE ON EVERY DEV START. The cache in node_modules/.vite
+               * outlives the things it was built from - a package update, a branch switch, an
+               * `astro check` that re-optimised under a server that has since stopped - and a
+               * stale one is the dev server 500ing on every request, or serving last week's
+               * copy of a dependency. Forcing costs a few seconds once per start; trusting the
+               * cache costs a session's worth of "restart it and clear the cache". Dev only:
+               * a build does not use the pre-bundle, and this flag is a no-op there anyway.
+               *
+               * Startup only, and that is the limit of it: a re-optimisation triggered while
+               * the server is running still swaps the hash underneath it. `webm clean` is the
+               * reset for that, and the handler exclusion above removes the known trigger.
+               */
+              force: command === 'dev',
             },
             ssr: {
               /*
@@ -468,10 +482,21 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
          *
          * Astro turns the `/404` route into 404.html, which the Workers asset router serves for
          * any unmatched path. A site that wants its own overrides this the ordinary Astro way, by
-         * having src/pages/404.astro - a file in the site beats an injected route, which is the
-         * child-theme rule holding without anything special here.
+         * having src/pages/404.astro - and then the package MUST NOT inject its own. It used to,
+         * relying on the site's file winning the collision. It did win, but Astro warns on every
+         * build ("A static route cannot be defined more than once … will result in a hard error
+         * in following versions of Astro"), and nothing in the routing docs promises a file beats
+         * an injected route. So the site's file is checked for first, in every form Astro treats
+         * as a route, and the package's page is injected only into the gap. See sitePage.
          */
-        injectRoute({ pattern: '/404', entrypoint: '@cparkerwebm/webmonterey/pages/404.astro' });
+        const own404 = sitePage(config.srcDir.pathname, '404');
+        if (own404) {
+          logger.debug(
+            `the site's own ${own404.slice(root.length)} is the 404; not injecting the package's`,
+          );
+        } else {
+          injectRoute({ pattern: '/404', entrypoint: '@cparkerwebm/webmonterey/pages/404.astro' });
+        }
       },
     },
   };

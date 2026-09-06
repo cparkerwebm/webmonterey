@@ -37,6 +37,7 @@ what it forked from and why, so the next person knows it is deliberate.
 | `npm run preview` | **a real build on real workerd**                           |
 | `npm run check`   | types and content schema                                   |
 | `npx webm doctor` | the things that fail silently                              |
+| `npx webm clean`  | reset a stale dev server: drops `.vite`, `.astro`, `dist`  |
 | `npm run format`  | prettier                                                   |
 
 **Run `npm run preview`, not `dev`, before merging anything** that touches styles,

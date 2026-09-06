@@ -26,6 +26,7 @@
  */
 
 import { escapeHtml, renderInline } from '../prose/inline.ts';
+import { fill } from '../copy-defaults.ts';
 
 /** The credit wording. Rendered verbatim on the site and in email. */
 export const CREDIT_TEXT = 'Powered by WebMonterey';
@@ -108,6 +109,33 @@ export interface WebmasterPageProps {
   intro: string;
   /** The remaining paragraphs' inner HTML, one entry per `<p>`. */
   body: string[];
+  /**
+   * The outbound button: `copy.webmaster.cta` as text, and the same attributed agency URL the
+   * intro links to. Render it as a link with `AGENCY_LINK_ATTRS` spread on - it leaves the site.
+   */
+  cta: { label: string; href: string };
+}
+
+/**
+ * The attributes every link to the agency carries: a new tab because it leaves the site,
+ * `noopener` without `noreferrer` because the referrer IS the attribution. One constant, spread
+ * by the built-in page and by introHtml, so the intro link and the button cannot disagree.
+ */
+export const AGENCY_LINK_ATTRS = { target: '_blank', rel: 'noopener' } as const;
+
+/**
+ * `{client}` in a copy string becomes the client's name; everything else is left alone.
+ *
+ * WHY THE PAGE NAMES THE CLIENT. The same paragraph on every site the agency builds is duplicate
+ * content across the fleet. A paragraph that says whose website this is is not, and it reads as
+ * written for the client rather than pasted. `client` is '' on a site that has not set one yet
+ * - the CHANGEME placeholder never reaches a page - and then the placeholder simply drops out
+ * and the doubled space with it: "This custom website" rather than "This  custom website".
+ *
+ * Runs BEFORE the inline renderer, so a name with an ampersand is escaped like any other text.
+ */
+export function personalize(text: string, client: string): string {
+  return fill(text, { client }).replace(/ {2,}/g, ' ').trim();
 }
 
 /**
@@ -122,24 +150,34 @@ export interface WebmasterPageProps {
  * and an element on separate lines, and "managed byWebMonterey" shipped.
  */
 export function introHtml(intro: { before: string; after: string }, href: string): string {
-  const link = `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(AGENCY.name)}</a>`;
+  const attrs = Object.entries(AGENCY_LINK_ATTRS)
+    .map(([k, v]) => `${k}="${v}"`)
+    .join(' ');
+  const link = `<a href="${escapeHtml(href)}" ${attrs}>${escapeHtml(AGENCY.name)}</a>`;
   return `${renderInline(intro.before)} ${link}${renderInline(intro.after)}`;
 }
 
-/** The whole prop set, from the merged copy and the attributed agency link. */
+/**
+ * The whole prop set, from the merged copy, the attributed agency link and the client's name.
+ * `client` is '' when the site has not set one - see personalize.
+ */
 export function webmasterPageProps(
   text: {
     title: string;
     description: string;
     intro: { before: string; after: string };
     body: string[];
+    cta: string;
   },
   href: string,
+  client = '',
 ): WebmasterPageProps {
+  const p = (s: string) => personalize(s, client);
   return {
-    title: text.title,
-    description: text.description,
-    intro: introHtml(text.intro, href),
-    body: text.body.map(renderInline),
+    title: p(text.title),
+    description: p(text.description),
+    intro: introHtml({ before: p(text.intro.before), after: p(text.intro.after) }, href),
+    body: text.body.map((paragraph) => renderInline(p(paragraph))),
+    cta: { label: p(text.cta), href },
   };
 }

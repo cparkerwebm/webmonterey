@@ -26,11 +26,12 @@ import Base from '../layouts/base.astro';
 import { copy } from '../includes/webmonterey/copy.ts';
 import {
   AGENCY,
+  AGENCY_LINK_ATTRS,
   creditUrl,
   webmasterPageProps,
   WEBMASTER_OG_PATH,
 } from '../includes/webmonterey/webmaster/webmaster.ts';
-import { domain, hasDomain } from '../includes/webmonterey/site.ts';
+import { client, domain, hasClient, hasDomain } from '../includes/webmonterey/site.ts';
 import { compact, renderJsonLd } from '../includes/webmonterey/structured-data/nodes.ts';
 import { pageHeader, webmasterPage } from 'virtual:webm/registry';
 import ogImage from 'virtual:webm/webmaster-og';
@@ -41,11 +42,17 @@ const WebmasterPage = webmasterPage;
 const text = copy.webmaster;
 const agencyHref = hasDomain ? creditUrl(domain, 'website') : AGENCY.url;
 /*
- * The words, resolved once for both layouts: the intro with the agency link in it, every
- * paragraph through the inline prose renderer, so `**bold**` in copy.webmaster works here
- * exactly as it does in page JSON.
+ * The words, resolved once for both layouts: the client's name filled into every `{client}`,
+ * the intro with the agency link in it, every paragraph through the inline prose renderer, so
+ * `**bold**` in copy.webmaster works here exactly as it does in page JSON.
  */
-const props = webmasterPageProps(text, agencyHref);
+const props = webmasterPageProps(text, agencyHref, hasClient ? client : '');
+/*
+ * FROM HERE ON, `props`, NEVER `text`. The title and description reach the <title>, the meta
+ * description, the Open Graph tags, the page header and the JSON-LD from props, because that is
+ * where `{client}` has been filled in. The first cut read `text` for those and shipped a meta
+ * description that said "This {client} custom website" - the e2e caught it, the example did not.
+ */
 
 /*
  * The graph needs a real origin for stable @id values, which is the same gate the canonical tag
@@ -60,8 +67,8 @@ if (Astro.site && !build.preview) {
       '@type': 'WebPage',
       '@id': `${url}#webpage`,
       url,
-      name: text.title,
-      description: text.description,
+      name: props.title,
+      description: props.description,
       isPartOf: { '@id': new URL('#website', Astro.site).href },
       about: { '@id': AGENCY.id },
       inLanguage: 'en',
@@ -80,8 +87,8 @@ if (Astro.site && !build.preview) {
 ---
 
 <Base
-  title={text.title}
-  description={text.description}
+  title={props.title}
+  description={props.description}
   shareImage={WEBMASTER_OG_PATH}
   shareImageWidth={ogImage.width}
   shareImageHeight={ogImage.height}
@@ -110,11 +117,11 @@ if (Astro.site && !build.preview) {
            * on the site; the router's plain <h1> otherwise. Same fallback the block router uses.
            */
           PageHeader ? (
-            <PageHeader title={text.title} description={text.description} />
+            <PageHeader title={props.title} description={props.description} />
           ) : (
             <section class="webm-section" data-space="sm">
               <div class="webm-container" data-width="text">
-                <h1>{text.title}</h1>
+                <h1>{props.title}</h1>
               </div>
             </section>
           )
@@ -134,6 +141,16 @@ if (Astro.site && !build.preview) {
               {props.body.map((paragraph) => (
                 <p set:html={paragraph} />
               ))}
+              {/*
+               * The button, to the same attributed URL. Outline rather than filled, so it reads
+               * as an invitation on a page about the site, not a call to action for the agency.
+               * The same attributes as the intro link, from the same constant.
+               */}
+              <p>
+                <a class="webm-webmaster-cta" href={props.cta.href} {...AGENCY_LINK_ATTRS}>
+                  {props.cta.label}
+                </a>
+              </p>
             </div>
           </div>
         </section>
@@ -141,3 +158,29 @@ if (Astro.site && !build.preview) {
     )
   }
 </Base>
+
+{
+  /*
+  GLOBAL, NOT SCOPED, on purpose. A scoped style would stamp a data-astro-cid hash on every
+  element of this page, and examples/minimal asserts the built-in <main> byte for byte so the
+  fallback cannot drift under the seam. The class is package-prefixed and used nowhere else,
+  which is all scoping would buy here. Tokens only: the outline is the link colour, the radius
+  and border width are the site's.
+*/
+}
+<style is:global>
+  @layer webm.components.core {
+    .webm-webmaster-cta {
+      display: inline-block;
+      padding: var(--webm-space-2xs) var(--webm-space-md);
+      border: var(--webm-border-width-2) solid currentColor;
+      border-radius: var(--webm-radius-md);
+      color: var(--webm-link);
+      text-decoration: none;
+    }
+
+    .webm-webmaster-cta:hover {
+      color: var(--webm-link-hover);
+    }
+  }
+</style>

@@ -29,7 +29,7 @@
  *   node scripts/e2e.mjs              against a freshly packed tarball
  *   node scripts/e2e.mjs --registry   against whatever is published right now
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -51,6 +51,20 @@ const run = (cmd, args, cwd, quiet = true, env = {}) =>
     stdio: quiet ? 'pipe' : 'inherit',
     env: { ...process.env, ...env },
   });
+
+/*
+ * `astro build` with BOTH streams captured, because Astro's router warnings go to stderr and
+ * execFileSync only returns stdout. The output is an assertion surface: a route collision is a
+ * warning today and a hard error in a later Astro, so a build that succeeds while warning is a
+ * build that will fail next year.
+ */
+const build = (cwd) => {
+  const r = spawnSync('npx', ['astro', 'build'], { cwd, encoding: 'utf8', env: process.env });
+  const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+  if (r.status !== 0) throw new Error(`astro build failed in ${cwd}\n${out}`);
+  return out;
+};
+const COLLISION = /cannot be defined more than once/;
 
 const work = mkdtempSync(join(tmpdir(), 'webm-e2e-'));
 console.log(`e2e in ${work}\n`);
@@ -150,7 +164,7 @@ try {
   check('seed wrote CLAUDE.md', existsSync(join(site, 'CLAUDE.md')));
 
   console.log('astro build…');
-  run('npx', ['astro', 'build'], site);
+  const firstBuild = build(site);
 
   const dist = join(site, 'dist/client');
   const read = (f) => (existsSync(join(dist, f)) ? readFileSync(join(dist, f), 'utf8') : '');
@@ -188,6 +202,22 @@ try {
     'the scratch page is NOT in a production build',
     !existsSync(join(dist, 'webm/index.html')),
     'a dev workbench shipped to the client domain',
+  );
+  check(
+    "without a site 404 the package's ships, with no route collision",
+    read('404.html').includes('Back to the home page') && !COLLISION.test(firstBuild),
+    COLLISION.test(firstBuild)
+      ? 'Astro warned that /404 is defined twice'
+      : 'dist/client/404.html is not the package page',
+  );
+  check(
+    'the webmaster page names the client, in the description and in the words',
+    read('webmaster/index.html').includes('This E2E Example custom website was designed') &&
+      /<meta name="description" content="This E2E Example custom website/.test(
+        read('webmaster/index.html'),
+      ) &&
+      read('webmaster/index.html').includes('about the E2E Example website'),
+    'the {client} placeholder was not filled from webmonterey.json',
   );
   check(
     'the webmaster page and its share image are built',
@@ -242,11 +272,13 @@ try {
   execFileSync('mkdir', ['-p', join(site, 'src/components/general')]);
   writeFileSync(
     join(site, 'src/components/general/webmaster-page.astro'),
-    `---\nconst { title, intro, body } = Astro.props;\n---\n` +
+    `---\nimport { AGENCY_LINK_ATTRS } from '@cparkerwebm/webmonterey/webmonterey/webmaster';\n` +
+      `const { title, intro, body, cta } = Astro.props;\n---\n` +
       `<article class="doc" data-child="CHILD_WEBMASTER_WINS">\n` +
       `  <h1 class="doc__title">{title}</h1>\n` +
       `  <p set:html={intro} />\n` +
       `  {body.map((p) => <p set:html={p} />)}\n` +
+      `  <p><a data-cta href={cta.href} {...AGENCY_LINK_ATTRS}>{cta.label}</a></p>\n` +
       `</article>\n`,
   );
   writeFileSync(
@@ -255,7 +287,7 @@ try {
       `\nexport { default as webmasterPage } from './general/webmaster-page.astro';\n`,
   );
 
-  run('npx', ['astro', 'build'], site);
+  const overrideBuild = build(site);
 
   const webmasterAfter = read('webmaster/index.html');
   check(
@@ -273,6 +305,13 @@ try {
     'the outbound link, its UTMs or its attributes did not survive the hand-off',
   );
   check(
+    'the cta reaches the site component: label, attributed href, agency link attributes',
+    /<a data-cta href="https:\/\/webmonterey\.com\/\?utm_source=client[^"]*" target="_blank" rel="noopener">Visit WebMonterey<\/a>/.test(
+      webmasterAfter,
+    ),
+    'the button prop, its href or its attributes did not survive the hand-off',
+  );
+  check(
     'the built-in webmaster layout is gone when the site owns the body',
     !/<div class="webm-stack">/.test(webmasterAfter),
     'both layouts rendered',
@@ -286,9 +325,11 @@ try {
   );
 
   check(
-    "the site's own 404.astro beats the injected one",
-    read('404.html').includes('CHILD_404_WINS'),
-    'the package route won, so a client cannot replace the 404',
+    "the site's own 404.astro is the 404, and the package's is not injected beside it",
+    read('404.html').includes('CHILD_404_WINS') && !COLLISION.test(overrideBuild),
+    COLLISION.test(overrideBuild)
+      ? "Astro warned that /404 is defined twice: the package injected its 404 over the site's"
+      : 'the package route won, so a client cannot replace the 404',
   );
 
   const css = readdirSync(join(dist, '_astro'))

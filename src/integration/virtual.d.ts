@@ -91,8 +91,9 @@ declare module 'virtual:webm/registry' {
    * pages rather than as the package's `<h1>` and stack of paragraphs.
    *
    * Receives `WebmasterPageProps` from `includes/webmonterey/webmaster/webmaster.ts`:
-   * `{ title, description, intro, body }`, the merged `copy.webmaster` - `intro` and `body` as
-   * HTML through the inline prose renderer, the agency link already in `intro`. The component
+   * `{ title, description, intro, body, cta }`, the merged `copy.webmaster` with the client's
+   * name filled in - `intro` and `body` as HTML through the inline prose renderer, the agency
+   * link already in `intro`, `cta` the outbound button's label and href. The component
    * lays the words out and carries no copy of its own. The route, the `<head>`, the share image and the JSON-LD stay the package's.
    * Null means the built-in layout, `pageHeader` seam included.
    */

@@ -47,6 +47,10 @@ const COMMANDS = {
     blurb: 'Move this site to a newer framework version',
     load: () => import('../src/cli/upgrade.ts'),
   },
+  clean: {
+    blurb: 'Remove node_modules/.vite, .astro and dist - the reset for a stale dev server',
+    load: () => import('../src/cli/clean.ts'),
+  },
 };
 
 function usage() {

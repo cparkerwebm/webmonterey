@@ -23,12 +23,18 @@ interface WebmasterPageProps {
   description: string; // text - also the meta description
   intro: string; // HTML - the first paragraph, agency link already in it
   body: string[]; // HTML - one entry per remaining paragraph
+  cta: { label: string; href: string }; // the outbound button: text, and the attributed URL
 }
 ```
 
 `intro` and `body` are already HTML: the agency link with its UTM parameters, and the copy's own
 inline formatting (`**bold**`, `_italic_`, `[text](/url)`) rendered and escaped. Render them with
-`set:html`. `title` and `description` are text.
+`set:html`. `title` and `description` are text. The client's name is already filled in wherever
+the copy says `{client}`.
+
+`cta` is the "Visit WebMonterey" button. Render it as a link in the site's outline button style,
+with `AGENCY_LINK_ATTRS` (from the same import) spread on: it leaves the site, and those are the
+attributes the intro link carries.
 
 **The component carries no copy of its own.** Not a heading, not a caption, not a sentence. The
 words are the same on every site; when a client wants them changed, that is `copy.webmaster` in
@@ -52,11 +58,14 @@ site; replace the element names and classes with the document block's own.
  * The /webmaster page body. The package hands in the copy; this lays it out like the site's
  * other document pages. See /webm:webmaster.
  */
-import type { WebmasterPageProps } from '@cparkerwebm/webmonterey/webmonterey/webmaster';
+import {
+  AGENCY_LINK_ATTRS,
+  type WebmasterPageProps,
+} from '@cparkerwebm/webmonterey/webmonterey/webmaster';
 
 type Props = WebmasterPageProps;
 
-const { title, intro, body } = Astro.props;
+const { title, intro, body, cta } = Astro.props;
 ---
 
 <section class="webm-section" data-space="lg">
@@ -68,24 +77,32 @@ const { title, intro, body } = Astro.props;
       <div class="doc__panel">
         <p set:html={intro} />
         {body.map((paragraph) => <p set:html={paragraph} />)}
+        <p>
+          <a class="button button--outline" href={cta.href} {...AGENCY_LINK_ATTRS}>{cta.label}</a>
+        </p>
       </div>
     </article>
   </div>
 </section>
 ```
 
+`button button--outline` stands for whatever this site's outline button class is - the one its
+own blocks use.
+
 If the document block is itself a component that takes `title` and a slot or `html` prop, render
 it directly rather than copying its markup:
 
 ```astro
 ---
+import { AGENCY_LINK_ATTRS } from '@cparkerwebm/webmonterey/webmonterey/webmaster';
 import Doc from '../content/content-000001/content-000001.astro';
-const { title, intro, body } = Astro.props;
+const { title, intro, body, cta } = Astro.props;
 ---
 
 <Doc title={title}>
   <p set:html={intro} />
   {body.map((paragraph) => <p set:html={paragraph} />)}
+  <p><a class="button button--outline" href={cta.href} {...AGENCY_LINK_ATTRS}>{cta.label}</a></p>
 </Doc>
 ```
 
@@ -109,8 +126,10 @@ Then read `dist/client/webmaster/index.html`:
 
 - the body is the new markup, and there is no `webm-stack` div left from the built-in layout
 - the `<h1>` is the package's title (`Our Webmaster` unless `copy.webmaster.title` is set)
-- the first paragraph has one `<a href="https://webmonterey.com/?utm_source=client…"
-target="_blank" rel="noopener">` and nothing else links off-site
+- the first paragraph names this client and has one
+  `<a href="https://webmonterey.com/?utm_source=client…" target="_blank" rel="noopener">`; the
+  "Visit WebMonterey" button is the only other off-site link, to the same URL with the same
+  attributes
 - `<title>`, `meta name="description"`, `og:image` (`/webmaster/og.png`) and the
   `application/ld+json` block are present and unchanged from before the export
 

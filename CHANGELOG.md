@@ -11,6 +11,69 @@ build. See `/webm:upgrade`.
 
 ---
 
+## 1.5.0 — 2026-09-06
+
+### Added
+
+- **The `/webmaster` page names the client.** Every string in `copy.webmaster` may carry
+  `{client}`, filled from `client` in `webmonterey.json` when the page renders, and the default
+  copy now does: the meta description, the first paragraph ("This Acme Co custom website was
+  designed, built and managed by WebMonterey…") and the contact line ("If you have a question
+  about the Acme Co website…"). Until now every site in the fleet carried the same paragraph
+  word for word, which is duplicate content across a hundred domains; a page that says whose
+  site it is is not. A site overriding `copy.webmaster` keeps its own words and may use
+  `{client}` in them. A site with no client name yet gets the sentence without the name.
+
+- **A "Visit WebMonterey" button on `/webmaster`.** Outline style, in the site's link colour,
+  radius and border width, below the paragraphs, to the same attributed agency URL the first
+  paragraph links to. The label is `copy.webmaster.cta`. For a site that lays the page out
+  itself, `WebmasterPageProps` gains `cta: { label, href }`, and `AGENCY_LINK_ATTRS` is
+  exported beside it so the button carries the same `target` and `rel` as the intro link
+  without either being typed twice. **A site that already exports `webmasterPage` does not
+  show the button until its component renders `cta`** - `/webm:webmaster` has the updated
+  reference component, one line to add.
+
+- **`webm clean`.** Removes `node_modules/.vite`, `.astro` and `dist` - the three
+  directories a stale dev server is made of - and nothing else. `--dry-run` lists them. The
+  reset that used to be "delete some caches and restart" is one command a session in a client
+  repo can run without knowing what Vite is. `/webm:traps` names it.
+
+- **The Vite pre-bundle is rebuilt on every `astro dev` start.** `optimizeDeps.force` in dev
+  only. A cache in `node_modules/.vite` that outlived a package update, a branch switch or an
+  `astro check` was the dev server 500ing on every request until someone cleared it; a few
+  seconds at startup buys not having that session. A cache that changes underneath a running
+  server is still `webm clean`.
+
+### Changed
+
+- **The `/webmaster` copy, again.** "WebMonterey handles web hosting, security, strategy and
+  ongoing care of our site." - _web hosting_, _our site_, and the clause about focusing on what
+  we do is gone. The contact line reads "about the {client} website" rather than "about this
+  website". A site overriding `copy.webmaster` is unaffected.
+
+- **`@astrojs/cloudflare` floor is `^14.3.0`.** It fixes a cold `astro dev` crash by
+  pre-bundling two of its own entrypoints, and a custom Worker entrypoint - which
+  `defineWorker` builds - now falls back to static assets when no route matches. The package's
+  own handler import is unchanged and the scheduled-handler scenario in the e2e still passes.
+  The package is tested on Astro 7.3.1; the peer range is still `^7.0.0` and 7.3 asks nothing
+  of a site. TypeScript stays on 6: TypeScript 7.0 is out, but `@astrojs/check` declares
+  TypeScript 5 or 6, and Astro's language tooling needs 6 until 7.1 ships a stable API.
+
+### Fixed
+
+- **Astro no longer warns that `/404` is defined twice.** A site with its own
+  `src/pages/404.astro` got two `[router]` warnings on every build - "A static route cannot be
+  defined more than once … will result in a hard error in following versions of Astro" - because
+  the package injected its 404 regardless and relied on the site's file winning. It now looks for
+  the site's own 404 first, in every form Astro treats as a route (`.astro`, `.md`, `.mdx`,
+  `.html`, `.ts`, `.js`), and injects its page only when there is none. A site with no 404 of
+  its own sees no change.
+
+Take it with `npx webm upgrade`. There is no codemod; the one thing to do by hand is the
+`cta` line in a site that exports `webmasterPage`.
+
+---
+
 ## 1.4.0 — 2026-09-04
 
 ### Added

@@ -22,14 +22,14 @@
   },
   "//dependencies": "The integration wires these itself, so a client site installs only astro and this package.",
   "dependencies": {
-    "@astrojs/cloudflare": "^14.1.7",
+    "@astrojs/cloudflare": "^14.3.0",
     "@astrojs/sitemap": "^3.7.3"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "@cloudflare/workers-types": "^5.20260826.1",
+    "@cloudflare/workers-types": "^5.20260906.1",
     "@types/node": "^26.1.2",
-    "astro": "^7.1.6",
+    "astro": "^7.3.1",
     "esbuild": "^0.28.2",
     "prettier": "^3.9.6",
     "prettier-plugin-astro": "^0.14.1",

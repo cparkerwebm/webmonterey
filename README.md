@@ -25,8 +25,8 @@ block router, `header`, `footer` and `panels` for the chrome, `pageHeader` in pl
 router's plain `<h1>`, `structuredData` for the site's JSON-LD, and `webmasterPage` for the body
 of the `/webmaster` page. That last one is the seam for a site whose document pages have a richer
 layout than a heading and a stack of paragraphs: the component receives the merged copy
-(`{ title, description, intro, body }`; `intro` and `body` are HTML, the agency link already in
-`intro`) and lays it out; the route, the words, the `<head>`, the share image and the agency graph
+(`{ title, description, intro, body, cta }`; `intro` and `body` are HTML, the agency link already
+in `intro`, the client's name already in the words, `cta` the outbound button) and lays it out; the route, the words, the `<head>`, the share image and the agency graph
 stay the package's. It carries no copy of its own - the words are overridden through
 `copy.webmaster` in `webmonterey.json`, not in the component.
 

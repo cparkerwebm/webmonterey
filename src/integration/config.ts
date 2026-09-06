@@ -94,3 +94,25 @@ export function loadForms(root: string): Record<string, unknown> {
   }
   return out;
 }
+
+/*
+ * THE EXTENSIONS ASTRO TREATS AS A PAGE OR ENDPOINT under src/pages. The docs name .astro and .md
+ * for a custom 404 and .html for plain pages; .mdx arrives with the MDX integration; .ts and .js
+ * are endpoints. Anything else in src/pages is not a route and cannot collide with one.
+ */
+const PAGE_EXTENSIONS = ['astro', 'md', 'mdx', 'html', 'ts', 'js'] as const;
+
+/**
+ * The site's own file for a top-level route, or null when it has none.
+ *
+ * `name` is the route's file stem - `404` for `/404` - and `srcDir` is the site's src directory
+ * as a path, not a URL. Pure, so the integration's "do not inject what the site already has" rule
+ * has a test that runs under `node --test` with a temp directory and nothing else.
+ */
+export function sitePage(srcDir: string, name: string): string | null {
+  for (const ext of PAGE_EXTENSIONS) {
+    const file = join(srcDir, 'pages', `${name}.${ext}`);
+    if (existsSync(file)) return file;
+  }
+  return null;
+}
