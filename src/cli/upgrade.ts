@@ -12,6 +12,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { codemodsAfter, codemodsBetween } from './codemods.ts';
 import { sync } from './sync.ts';
+import { enableQueue, report as reportQueue } from './queue.ts';
+import { resolveWrangler, wranglerRunner } from './wrangler.ts';
 import { packageName } from './package-root.ts';
 
 const PACKAGE = packageName();
@@ -88,6 +90,18 @@ export function run(argv: string[]): number {
 
   runCodemods(siteRoot, from ?? '0.0.0', to);
   const synced = resync(siteRoot);
+
+  /*
+   * THE QUEUE, on every site. Creates the two queues on the account and wires the config - the
+   * one step of an upgrade that leaves the machine. When it cannot (not logged in, no network)
+   * it writes nothing and says so; the site keeps sending inline and `npx webm queue` finishes
+   * it later. --no-queue skips it for a site that should stay inline.
+   */
+  if (!argv.includes('--no-queue')) {
+    console.log('\nQueue:');
+    const bin = resolveWrangler(siteRoot);
+    reportQueue(enableQueue(siteRoot, bin ? wranglerRunner(siteRoot, bin) : null), siteRoot);
+  }
 
   console.log(`\nNow, in order:`);
   console.log(`  npx webm doctor`);

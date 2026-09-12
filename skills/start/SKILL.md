@@ -99,16 +99,18 @@ rewrites `wrangler.jsonc` with tabs and no blank lines; `npm run format` puts it
 Set `features.d1: true` once the binding exists.
 
 **The queue, for every site with a form.** Notification and autoresponse mail go through it
-instead of the request, and a failed notification is retried rather than logged. Two queues, the
-slug and its dead-letter queue; there is no `--update-config` for queues, so the scaffold already
-wrote the block into `wrangler.jsonc` as a comment:
+instead of the request, and a failed notification is retried rather than logged. One command
+creates the two queues (the slug and its dead-letter queue), uncomments the block the scaffold
+left in `wrangler.jsonc`, sets `features.queue`, and prints what on this site now goes through
+the queue:
 
 ```sh
-npx wrangler queues create <slug>
-npx wrangler queues create <slug>-dlq
+npx webm queue
 ```
 
-Then uncomment the `"queues"` block in `wrangler.jsonc` and set `features.queue: true`.
+It needs wrangler logged in; if it is not, it says so and writes nothing, and the site sends
+inline until it is run again. `astro dev` does not run consumers; `npm run preview` does, so a
+form test on the preview is what proves the queue.
 
 **Analytics needs nothing here.** The `ANALYTICS` binding is in the scaffolded `wrangler.jsonc`
 and `features.analytics` is already on; the Analytics Engine dataset, named for the slug, is

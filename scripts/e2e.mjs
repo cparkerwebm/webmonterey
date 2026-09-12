@@ -363,6 +363,30 @@ try {
     'running the codemods again changes nothing',
     /nothing to change/.test(run('npx', ['webm', 'upgrade', '--codemods-from', '1.5.0'], site)),
   );
+  /*
+   * THE QUEUE STEP, with a deliberately invalid token: it must say so and write nothing - the
+   * site builds and sends inline exactly as before. The first run of this scenario on a logged-in
+   * laptop created two real queues on the account, which is why the token is forced here.
+   */
+  console.log('webm queue (no login)…');
+  const queueOut = spawnSync('npx', ['webm', 'queue'], {
+    cwd: site,
+    encoding: 'utf8',
+    /* An invalid token forces token auth over any laptop login, so the account is never reached. */
+    env: { ...process.env, CLOUDFLARE_API_TOKEN: 'invalid-on-purpose' },
+  });
+  const queueText = `${queueOut.stdout ?? ''}${queueOut.stderr ?? ''}`;
+  check(
+    'without a wrangler login the queue step skips and names the fix',
+    queueOut.status === 1 && /queue: wrangler (is not logged in|could not create)/.test(queueText),
+    queueText.split('\n').slice(0, 4).join('\n'),
+  );
+  check(
+    'and it wrote nothing: the block stays a comment and the flag stays off',
+    /\/\/ "queues": \{/.test(readFileSync(join(site, 'wrangler.jsonc'), 'utf8')) &&
+      JSON.parse(readFileSync(siteJson, 'utf8')).features.queue === false,
+  );
+
   build(site);
   check(
     'after the upgrade the site-owned button carries the 25px-floor marker',

@@ -51,6 +51,10 @@ const COMMANDS = {
     blurb: 'Remove node_modules/.vite, .astro and dist - the reset for a stale dev server',
     load: () => import('../src/cli/clean.ts'),
   },
+  queue: {
+    blurb: "Put this site's mail on its Cloudflare Queue: create the queues, wire the config",
+    load: () => import('../src/cli/queue.ts'),
+  },
 };
 
 function usage() {

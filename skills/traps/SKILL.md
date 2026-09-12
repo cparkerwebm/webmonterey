@@ -270,10 +270,12 @@ entrypoint with no `scheduled`, and on one that forgets the adapter handler.
 
 ### Enabling the queue on a site scaffolded before 1.6.0
 
-Nothing switches it on by itself: the action checks `features.queue` and the `QUEUE` binding on
-every submission and sends inline until both are there, so an older site keeps working exactly
-as it did. A site scaffolded since 1.6.0 has the block below as a comment in `wrangler.jsonc`
-and `src/worker.ts` already; an older site types both. Two queues, named for the slug:
+`npx webm upgrade` does this on every site, and `npx webm queue` does it on its own: create the
+two queues, write the block, write or extend `src/worker.ts`, set the flag, and print what on
+this site now goes through the queue. Both need wrangler logged in and write nothing when it is
+not - the action checks `features.queue` and the `QUEUE` binding on every submission and sends
+inline until both are there, so a site that could not be wired keeps working exactly as it did.
+What the command does, for a reader checking its work or doing it by hand:
 
 ```sh
 npx wrangler queues create <slug>

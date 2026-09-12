@@ -25,8 +25,16 @@ steps live in the CLI, where they update the moment the install finishes.
 2. Bump `@cparkerwebm/webmonterey`
 3. Run any codemods the new version ships
 4. `webm sync` — re-materialize the fleet skills
-5. `webm doctor` — the traps that fail silently
-6. `npm run check` and `npm run build`
+5. `webm queue` — create the site's queues and wire them, when wrangler is logged in, and say
+   what on this site now goes through the queue; otherwise it says so and the site keeps
+   sending inline (`--no-queue` skips it)
+6. `webm doctor` — the traps that fail silently
+7. `npm run check` and `npm run build`
+
+**Tell the person what the upgrade changed on this site**, from the command's own output: the
+codemods that ran, and the queue outline - which mail and which jobs now leave through the queue
+and which stay in the request. That outline is the record of what a client site does differently
+after this upgrade.
 
 ## After it finishes
 

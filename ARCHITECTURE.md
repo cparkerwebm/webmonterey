@@ -268,7 +268,10 @@ lost to the injected one silently.
 **The queue is the same reasoning as storing first, one step on.** The test is whether the
 visitor needs the result now: validation, the honeypot, Turnstile and the D1 write, yes; the
 mail, no. So with `features.queue` on the action hands two messages to the site's Cloudflare
-Queue and answers. The consumer - `formQueue()` from the queues include, exported by the
+Queue and answers. `webm queue` creates the two queues, wires them and prints what on the site
+now goes through the queue; `webm upgrade` runs it on every site - the one upgrade step that
+leaves the machine, so it writes nothing when wrangler cannot answer and the site stays inline
+until it is run again. The consumer - `formQueue()` from the queues include, exported by the
 scaffold's `src/worker.ts` through `defineWorker` - retries a failed notification with a delay
 until wrangler's `max_retries` moves it to the dead-letter queue, where a person can see it; and
 never retries the autoresponse, which was already the rule. Two messages, not one, so the second

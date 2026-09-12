@@ -29,10 +29,13 @@ nothing else. `npx webm upgrade` runs the one codemod, syncs the skills and chec
   a message over the limit or `send()` throwing all send in the request exactly as before,
   through the same two functions in `forms/deliver.ts`. Every scaffold now writes
   `src/worker.ts` - `defineWorker({ queue: formQueue() })` - and sets `main`, so a cron is one
-  more handler in a file that exists; the queue config sits commented in `wrangler.jsonc` until
-  `/webm:start` creates the two queues (`<slug>`, `<slug>-dlq`). A site adds its own kinds - a
-  CRM add, a Slack post - as handlers by kind on the same consumer. `webm doctor` gains
-  `queue-binding`. `@cparkerwebm/webmonterey/cloudflare/queues`.
+  more handler in a file that exists. **`webm queue` creates the two queues (`<slug>`,
+  `<slug>-dlq`), wires them, and prints what on this site now goes through the queue; `webm
+  upgrade` runs it on every site** - the one upgrade step that leaves the machine, so when
+  wrangler is not logged in it writes nothing, says so, and the site keeps sending inline until
+  `npx webm queue` is run again (`--no-queue` skips it). A site adds its own kinds - a CRM add,
+  a Slack post - as handlers by kind on the same consumer. `webm doctor` gains `queue-binding`.
+  `@cparkerwebm/webmonterey/cloudflare/queues`.
 
 - **Analytics Engine.** Every site with `features.analytics` writes to a Workers Analytics Engine
   dataset named for its slug through the `ANALYTICS` binding: the form pipeline's events and a
@@ -143,10 +146,11 @@ nothing else. `npx webm upgrade` runs the one codemod, syncs the skills and chec
 
 ### For every site
 
-1. `npx webm upgrade`. The codemod rewrites the button spread in a site-owned webmaster layout
-   and switches analytics on; nothing else changes.
-2. Nothing else is required. To take the queue: the "Enabling the queue on a site scaffolded
-   before 1.6.0" section of `/webm:traps`. For marketing: `/webm:launch` 10b.
+1. `npx webm upgrade`, with wrangler logged in. The codemod rewrites the button spread in a
+   site-owned webmaster layout and switches analytics on; the queue step creates the site's
+   queues, wires them, and prints what now goes through the queue. Nothing else changes.
+2. `npm run build`, and a form test on `npm run preview` proves the queue. For marketing:
+   `/webm:launch` 10b.
 
 ---
 
