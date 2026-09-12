@@ -29,7 +29,7 @@ const SCAFFOLD_WRANGLER = `{
   // "queues": {
   //   "producers": [{ "binding": "QUEUE", "queue": "acme" }],
   //   "consumers": [
-  //     { "queue": "acme", "max_retries": 5, "dead_letter_queue": "acme-dlq" }
+  //     { "queue": "acme", "max_retries": 5, "dead_letter_queue": "acme-fail" }
   //   ]
   // },
 
@@ -82,13 +82,13 @@ test('a 1.5 site: both queues created, main and the block inserted, worker.ts wr
   assert.equal(result.skipped, null);
   assert.deepEqual(calls, [
     ['queues', 'create', 'acme'],
-    ['queues', 'create', 'acme-dlq'],
+    ['queues', 'create', 'acme-fail'],
   ]);
   const wrangler = readFileSync(join(root, 'wrangler.jsonc'), 'utf8');
   assert.match(wrangler, /"main": "\.\/src\/worker\.ts",\n\n  "assets"/);
   assert.match(
     wrangler,
-    /"queues": \{\n    "producers": \[\{ "binding": "QUEUE", "queue": "acme" \}\],[\s\S]*"dead_letter_queue": "acme-dlq"[\s\S]*\},\n\n  "observability"/,
+    /"queues": \{\n    "producers": \[\{ "binding": "QUEUE", "queue": "acme" \}\],[\s\S]*"dead_letter_queue": "acme-fail"[\s\S]*\},\n\n  "observability"/,
   );
   assert.match(
     readFileSync(join(root, 'src/worker.ts'), 'utf8'),
@@ -192,4 +192,28 @@ export default defineWorker({
     JSON.stringify({ domain: 'acme.com', features: { marketing: true } }),
   );
   assert.match(outline(root).join('\n'), /newsletter signups[\s\S]*campaign batches/);
+});
+
+test('a wired site whose dead-letter queue was renamed gets the new queue created, nothing else', () => {
+  const root = site(
+    OLD_WRANGLER.replace(
+      '"observability"',
+      '"main": "./src/worker.ts",\n  "queues": { "producers": [{ "binding": "QUEUE", "queue": "acme" }], "consumers": [{ "queue": "acme", "dead_letter_queue": "acme-fail" }] },\n  "observability"',
+    ),
+    "import { defineWorker } from '@cparkerwebm/webmonterey/worker';\nimport { formQueue } from '@cparkerwebm/webmonterey/cloudflare/queues';\nexport default defineWorker({ queue: formQueue() });\n",
+  );
+  writeFileSync(
+    join(root, 'webmonterey.json'),
+    JSON.stringify({ domain: 'acme.com', features: { queue: true } }),
+  );
+  const { runner, calls } = fakeWrangler();
+  runner(['queues', 'create', 'acme']); // the main queue already exists on the account
+  calls.length = 0;
+  const result = enableQueue(root, runner);
+  assert.equal(result.skipped, null);
+  assert.deepEqual(calls, [
+    ['queues', 'create', 'acme'],
+    ['queues', 'create', 'acme-fail'],
+  ]);
+  assert.deepEqual(result.changes, ['created queue acme-fail']);
 });

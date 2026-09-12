@@ -11,5 +11,5 @@ test('a form submission fits; something absurd does not', () => {
 });
 
 test('the queue and its dead-letter queue are the slug and the slug with a purpose suffix', () => {
-  assert.deepEqual(queueNames('example'), { queue: 'example', deadLetter: 'example-dlq' });
+  assert.deepEqual(queueNames('example'), { queue: 'example', deadLetter: 'example-fail' });
 });

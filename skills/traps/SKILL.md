@@ -279,7 +279,7 @@ What the command does, for a reader checking its work or doing it by hand:
 
 ```sh
 npx wrangler queues create <slug>
-npx wrangler queues create <slug>-dlq
+npx wrangler queues create <slug>-fail
 ```
 
 ```jsonc
@@ -287,7 +287,7 @@ npx wrangler queues create <slug>-dlq
 "main": "./src/worker.ts",
 "queues": {
   "producers": [{ "binding": "QUEUE", "queue": "<slug>" }],
-  "consumers": [{ "queue": "<slug>", "max_retries": 5, "dead_letter_queue": "<slug>-dlq" }]
+  "consumers": [{ "queue": "<slug>", "max_retries": 5, "dead_letter_queue": "<slug>-fail" }]
 }
 ```
 

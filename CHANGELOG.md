@@ -11,6 +11,20 @@ build. See `/webm:upgrade`.
 
 ---
 
+## 1.6.1 — 2026-09-12
+
+### Changed
+
+- **The dead-letter queue is `<slug>-fail`, not `<slug>-dlq`.** What lands there has failed every
+  retry, and the name should say so to someone reading the Cloudflare dashboard who has never
+  heard the term. One site upgraded in the minutes between: **the 1.6.1 codemod renames the
+  dead-letter queue in `wrangler.jsonc`, and the queue step creates the `-fail` queue** - it now
+  creates both names whether or not the block is wired, since an existing queue is a no-op. The
+  old `-dlq` queue is left for a person: the upgrade never deletes a resource, and the codemod
+  prints the `wrangler queues delete` command to run once the next deploy is live.
+
+---
+
 ## 1.6.0 — 2026-09-12
 
 A release about what happens after the visitor has their page: mail through a queue, events

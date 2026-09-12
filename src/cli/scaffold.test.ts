@@ -274,7 +274,7 @@ test('the scaffold writes the Worker entrypoint with the queue consumer, and the
     f['wrangler.jsonc']!,
     /\/\/ {3}"producers": \[\{ "binding": "QUEUE", "queue": "autire" \}\]/,
   );
-  assert.match(f['wrangler.jsonc']!, /"dead_letter_queue": "autire-dlq"/);
+  assert.match(f['wrangler.jsonc']!, /"dead_letter_queue": "autire-fail"/);
   assert.doesNotMatch(f['wrangler.jsonc']!, /^\s*"queues":/m, 'not live until the queues exist');
   assert.match(f['src/worker.ts']!, /defineWorker\(\{ queue: formQueue\(\) \}\)/);
   assert.equal(json(f, 'webmonterey.json').features.queue, false);

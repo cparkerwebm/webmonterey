@@ -145,3 +145,25 @@ test('a multi-line run_worker_first array gets the route inside it', () => {
     'inside the array, the trailing comma kept',
   );
 });
+
+test('1.6.1 renames a -dlq dead-letter queue to -fail and says which queue to delete', () => {
+  const rename = CODEMODS.find((c) => c.version === '1.6.1')!;
+  const root = oldSite();
+  writeFileSync(
+    join(root, 'wrangler.jsonc'),
+    OLD_WRANGLER.replace(
+      '"observability"',
+      '"queues": { "consumers": [{ "queue": "acme", "dead_letter_queue": "acme-dlq" }] },\n  "observability"',
+    ),
+  );
+  const changes = rename.run(root);
+  assert.equal(changes.length, 1);
+  assert.match(changes[0]!, /renamed to acme-fail/);
+  assert.match(changes[0]!, /npx wrangler queues delete acme-dlq/);
+  assert.match(
+    readFileSync(join(root, 'wrangler.jsonc'), 'utf8'),
+    /"dead_letter_queue": "acme-fail"/,
+  );
+  assert.deepEqual(rename.run(root), [], 'idempotent');
+  assert.deepEqual(rename.run(oldSite()), [], 'a site with no queues is untouched');
+});

@@ -11,7 +11,7 @@ test('the shipped codemods are exactly the versions this release claims', () => 
   // reviews, and this line is where the review happens.
   assert.deepEqual(
     CODEMODS.map((c) => c.version),
-    ['1.6.0'],
+    ['1.6.0', '1.6.1'],
   );
 });
 

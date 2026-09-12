@@ -229,13 +229,13 @@ export function scaffold(options: ScaffoldOptions): Record<string, string> {
     `  // THE QUEUE. Notification and autoresponse mail go through it instead of the request, and\n` +
     `  // a failed notification is retried rather than logged. Off until the queues exist: a\n` +
     `  // binding to a queue that is not there fails the deploy. /webm:start creates both -\n` +
-    `  //   npx wrangler queues create ${n.slug} && npx wrangler queues create ${n.slug}-dlq\n` +
+    `  //   npx wrangler queues create ${n.slug} && npx wrangler queues create ${n.slug}-fail\n` +
     `  // - then uncomments this and sets features.queue in webmonterey.json. Without it the\n` +
     `  // action sends inline, as every site did before 1.6.0.\n` +
     `  // "queues": {\n` +
     `  //   "producers": [{ "binding": "QUEUE", "queue": "${n.slug}" }],\n` +
     `  //   "consumers": [\n` +
-    `  //     { "queue": "${n.slug}", "max_retries": 5, "dead_letter_queue": "${n.slug}-dlq" }\n` +
+    `  //     { "queue": "${n.slug}", "max_retries": 5, "dead_letter_queue": "${n.slug}-fail" }\n` +
     `  //   ]\n` +
     `  // },\n\n` +
     `  // Astro's adapter builds static assets into dist/client, NOT dist.\n` +

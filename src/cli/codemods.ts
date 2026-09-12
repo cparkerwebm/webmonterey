@@ -189,7 +189,35 @@ function webmasterCta(siteRoot: string): string[] {
   }
 }
 
-export const CODEMODS: Codemod[] = [WEBMASTER_CTA];
+/*
+ * 1.6.1: the dead-letter queue is `<slug>-fail`. One site upgraded on 1.6.0 in the minutes before
+ * the rename and has a `-dlq` queue: this renames it in wrangler.jsonc, `webm queue` then creates
+ * the `-fail` queue (it creates both names whether or not the block is wired, and an existing
+ * queue is fine), and the old queue is left for a person to delete - the upgrade never deletes a
+ * resource, and the message says which command does.
+ */
+const DEAD_LETTER_NAME: Codemod = {
+  version: '1.6.1',
+  title: 'The dead-letter queue is <slug>-fail',
+  run(siteRoot) {
+    const wranglerPath = ['wrangler.jsonc', 'wrangler.json']
+      .map((f) => join(siteRoot, f))
+      .find(existsSync);
+    if (!wranglerPath) return [];
+    const before = readFileSync(wranglerPath, 'utf8');
+    const after = before.replace(/("dead_letter_queue"\s*:\s*")([^"]+)-dlq(")/g, '$1$2-fail$3');
+    if (after === before) return [];
+    writeFileSync(wranglerPath, after);
+    const old = before.match(/"dead_letter_queue"\s*:\s*"([^"]+-dlq)"/)?.[1] ?? '<slug>-dlq';
+    return [
+      `wrangler.jsonc: dead_letter_queue renamed to ${old.replace(/-dlq$/, '-fail')}. The queue step ` +
+        `creates it; delete the old one yourself once the next deploy is live: ` +
+        `npx wrangler queues delete ${old}`,
+    ];
+  },
+};
+
+export const CODEMODS: Codemod[] = [WEBMASTER_CTA, DEAD_LETTER_NAME];
 
 /** Semver compare, on the three numeric parts only. Prerelease tags are not used here. */
 function compareVersions(a: string, b: string): number {

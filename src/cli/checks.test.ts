@@ -850,7 +850,7 @@ export default defineWorker({ queue: formQueue() });`;
     main: './src/worker.ts',
     queues: {
       producers: [{ binding: 'QUEUE', queue: 'acme' }],
-      consumers: [{ queue: 'acme', dead_letter_queue: 'acme-dlq' }],
+      consumers: [{ queue: 'acme', dead_letter_queue: 'acme-fail' }],
     },
   };
   const noHandler = runCheck(

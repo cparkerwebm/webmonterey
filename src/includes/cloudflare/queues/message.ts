@@ -104,9 +104,13 @@ export function fitsQueue(message: unknown): boolean {
   return new TextEncoder().encode(JSON.stringify(message)).byteLength <= MAX_MESSAGE_BYTES;
 }
 
-/** The queue and dead-letter queue names for a site, from its slug: one name everywhere. */
+/**
+ * The queue and its dead-letter queue, from the slug: one name everywhere. The dead-letter queue is
+ * `<slug>-fail` - what lands there has failed every retry, and the name says so to a reader of the
+ * dashboard who has never heard the term dead-letter.
+ */
 export function queueNames(slug: string): { queue: string; deadLetter: string } {
-  return { queue: slug, deadLetter: `${slug}-dlq` };
+  return { queue: slug, deadLetter: `${slug}-fail` };
 }
 
 /** The binding every site's producer uses. */

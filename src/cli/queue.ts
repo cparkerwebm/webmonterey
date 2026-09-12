@@ -70,10 +70,15 @@ export function enableQueue(siteRoot: string, wrangler: WranglerRunner | null): 
   let config = readFileSync(wranglerPath, 'utf8');
   const changes: string[] = [];
 
-  /* 1. The queues, on the account - before any config names them. */
+  /*
+   * 1. The queues, on the account - before any config names them. Both names, even on a site
+   * whose block is already wired: a rename (1.6.1's -fail) means the block can name a queue that
+   * does not exist yet, and creating an existing one is a no-op wrangler reports as such.
+   */
   const alreadyWired = /^[ \t]*"queues"\s*:/m.test(config);
-  if (!alreadyWired) {
+  {
     if (!wrangler) {
+      if (alreadyWired) return { changes, skipped: null };
       return {
         changes,
         skipped:
@@ -81,10 +86,12 @@ export function enableQueue(siteRoot: string, wrangler: WranglerRunner | null): 
           'sending inline. npm install, then npx webm queue.',
       };
     }
-    for (const name of [names.queue, names.deadLetter]) {
+    const deadLetter = config.match(/"dead_letter_queue"\s*:\s*"([^"]+)"/)?.[1] ?? names.deadLetter;
+    for (const name of [names.queue, deadLetter]) {
       const r = wrangler(['queues', 'create', name]);
       if (r.ok || /already exists/i.test(r.output)) {
-        changes.push(r.ok ? `created queue ${name}` : `queue ${name} already exists`);
+        if (r.ok) changes.push(`created queue ${name}`);
+        else if (!alreadyWired) changes.push(`queue ${name} already exists`);
         continue;
       }
       return {
