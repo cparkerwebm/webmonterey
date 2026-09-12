@@ -72,6 +72,20 @@ const build = (cwd) => {
 const COLLISION = /cannot be defined more than once/;
 
 const work = mkdtempSync(join(tmpdir(), 'webm-e2e-'));
+
+/*
+ * NO LOGIN, for every step that could reach the Cloudflare account. An empty config home means
+ * wrangler finds no OAuth session, and the empty token means it has nothing else; in a
+ * non-interactive process it can only report "not logged in". A bogus token was tried first and
+ * did not hold on the upgrade path - two runs created real queues on the account.
+ */
+const NO_LOGIN = {
+  ...process.env,
+  XDG_CONFIG_HOME: join(work, 'no-config'),
+  CLOUDFLARE_API_TOKEN: '',
+  CLOUDFLARE_ACCOUNT_ID: '',
+  WRANGLER_SEND_METRICS: 'false',
+};
 console.log(`e2e in ${work}\n`);
 
 try {
@@ -291,18 +305,17 @@ try {
         ) ?? []
     ).join('\n');
   execFileSync('mkdir', ['-p', join(site, 'src/components/general')]);
-  writeFileSync(
-    join(site, 'src/components/general/webmaster-page.astro'),
+  const oldLayout =
     `---\nimport { AGENCY_LINK_ATTRS, type WebmasterPageProps } from '@cparkerwebm/webmonterey/webmonterey/webmaster';\n` +
-      `type Props = WebmasterPageProps;\n` +
-      `const { title, intro, body, cta } = Astro.props;\n---\n` +
-      `<article class="doc" data-child="CHILD_WEBMASTER_WINS">\n` +
-      `  <h1 class="doc__title">{title}</h1>\n` +
-      `  <p set:html={intro} />\n` +
-      `  {body.map((p) => <p set:html={p} />)}\n` +
-      `  <p><a data-cta href={cta.href} {...AGENCY_LINK_ATTRS}>{cta.label}</a></p>\n` +
-      `</article>\n`,
-  );
+    `type Props = WebmasterPageProps;\n` +
+    `const { title, intro, body, cta } = Astro.props;\n---\n` +
+    `<article class="doc" data-child="CHILD_WEBMASTER_WINS">\n` +
+    `  <h1 class="doc__title">{title}</h1>\n` +
+    `  <p set:html={intro} />\n` +
+    `  {body.map((p) => <p set:html={p} />)}\n` +
+    `  <p><a data-cta href={cta.href} {...AGENCY_LINK_ATTRS}>{cta.label}</a></p>\n` +
+    `</article>\n`;
+  writeFileSync(join(site, 'src/components/general/webmaster-page.astro'), oldLayout);
   writeFileSync(
     join(site, 'src/components/registry.ts'),
     readFileSync(join(site, 'src/components/registry.ts'), 'utf8') +
@@ -344,8 +357,9 @@ try {
    * version, then the sync. The one codemod rewrites the button's spread; nothing else in the
    * site changes. Then a rebuild, and the button carries the marker the page's floor rule keys on.
    */
-  console.log('webm upgrade --codemods-from 1.5.0…');
-  const upgraded = run('npx', ['webm', 'upgrade', '--codemods-from', '1.5.0'], site);
+  /* --no-queue: these two runs prove the codemods; the queue step is proved below, logged out. */
+  console.log('webm upgrade --codemods-from 1.5.0 --no-queue…');
+  const upgraded = run('npx', ['webm', 'upgrade', '--codemods-from', '1.5.0', '--no-queue'], site);
   check(
     'the 1.6.0 codemod ran and named the layout it changed',
     /1\.6\.0 .*AGENCY_CTA_ATTRS/.test(upgraded) && /webmaster-page\.astro/.test(upgraded),
@@ -361,19 +375,66 @@ try {
   );
   check(
     'running the codemods again changes nothing',
-    /nothing to change/.test(run('npx', ['webm', 'upgrade', '--codemods-from', '1.5.0'], site)),
+    /nothing to change/.test(
+      run('npx', ['webm', 'upgrade', '--codemods-from', '1.5.0', '--no-queue'], site),
+    ),
   );
   /*
    * THE QUEUE STEP, with a deliberately invalid token: it must say so and write nothing - the
    * site builds and sends inline exactly as before. The first run of this scenario on a logged-in
    * laptop created two real queues on the account, which is why the token is forced here.
    */
+  /*
+   * A REAL CROSS-VERSION UPGRADE. The site is put back on 1.5.0 from the registry with the
+   * 1.5-shaped layout, committed, and upgraded to THIS tarball by this repo's own built binary
+   * standing in for "the old version's process" - the fix under test is that the second half
+   * runs from the binary just installed, so the new codemods apply. Through 1.6.1 they did not.
+   * npm reaches the registry for astro anyway, so 1.5.0 coming from it is no new dependency.
+   */
+  console.log('upgrade from 1.5.0 to the tarball…');
+  writeFileSync(join(site, 'src/components/general/webmaster-page.astro'), oldLayout);
+  run('npm', ['install', '@cparkerwebm/webmonterey@1.5.0', '--silent', '--ignore-scripts'], site);
+  run('git', ['add', '-A'], site);
+  run(
+    'git',
+    ['-c', 'user.email=e2e@example.com', '-c', 'user.name=e2e', 'commit', '-q', '-m', 'on 1.5.0'],
+    site,
+  );
+  const crossOut = spawnSync(process.execPath, [join(ROOT, 'dist/webm.mjs'), 'upgrade', tgz], {
+    cwd: site,
+    encoding: 'utf8',
+    env: NO_LOGIN,
+  });
+  const crossText = `${crossOut.stdout ?? ''}${crossOut.stderr ?? ''}`;
+  check(
+    'the upgrade installed the tarball and handed over to the new binary',
+    crossOut.status === 0 && /Handing over to it/.test(crossText),
+    crossText.split('\n').slice(-12).join('\n'),
+  );
+  check(
+    "the NEW version's codemods ran from the new binary: the 1.5 layout was rewritten",
+    /1\.6\.0 .*AGENCY_CTA_ATTRS/.test(crossText) &&
+      /\{\.\.\.AGENCY_CTA_ATTRS\}/.test(
+        readFileSync(join(site, 'src/components/general/webmaster-page.astro'), 'utf8'),
+      ),
+    'the codemod list came from the old process',
+  );
+  check(
+    'and the queue step ran from it too, skipping cleanly without a login and creating nothing',
+    /queue: wrangler (is not logged in|could not create)/.test(crossText) &&
+      !/created queue/.test(crossText),
+    crossText
+      .split('\n')
+      .filter((l) => /queue/i.test(l))
+      .join('\n'),
+  );
+
   console.log('webm queue (no login)…');
   const queueOut = spawnSync('npx', ['webm', 'queue'], {
     cwd: site,
     encoding: 'utf8',
     /* An invalid token forces token auth over any laptop login, so the account is never reached. */
-    env: { ...process.env, CLOUDFLARE_API_TOKEN: 'invalid-on-purpose' },
+    env: NO_LOGIN,
   });
   const queueText = `${queueOut.stdout ?? ''}${queueOut.stderr ?? ''}`;
   check(
@@ -381,11 +442,18 @@ try {
     queueOut.status === 1 && /queue: wrangler (is not logged in|could not create)/.test(queueText),
     queueText.split('\n').slice(0, 4).join('\n'),
   );
-  check(
-    'and it wrote nothing: the block stays a comment and the flag stays off',
-    /\/\/ "queues": \{/.test(readFileSync(join(site, 'wrangler.jsonc'), 'utf8')) &&
-      JSON.parse(readFileSync(siteJson, 'utf8')).features.queue === false,
-  );
+  {
+    const wranglerNow = readFileSync(join(site, 'wrangler.jsonc'), 'utf8');
+    const siteNow = JSON.parse(readFileSync(siteJson, 'utf8'));
+    check(
+      'and it wrote nothing: the block stays a comment and the flag stays off',
+      /\/\/ "queues": \{/.test(wranglerNow) && siteNow.features.queue === false,
+      `features.queue=${siteNow.features.queue}; queues lines:\n${wranglerNow
+        .split('\n')
+        .filter((l) => /queues|main|QUEUE/.test(l))
+        .join('\n')}`,
+    );
+  }
 
   build(site);
   check(

@@ -6,11 +6,19 @@
  * SKILL.md with the new version's, and keeps executing the OLD instructions to completion. The
  * binary on disk is the new version the moment the install finishes; the markdown is frozen for
  * the session. Anything version-specific therefore has to be here.
+ *
+ * AND THE SAME TRAP APPLIES TO THIS PROCESS. The command runs in the OLD version's Node process:
+ * it installs the new package and then, through 1.6.1, ran the codemods from the registry it had
+ * already imported - the old one, in which a codemod shipping in the version being installed does
+ * not exist. Two upgrades of one site each applied nothing until `--codemods-from` was run by hand
+ * in a fresh process. So after the install this process does exactly one more thing: it spawns
+ * the NEW binary, from the site's node_modules, to run the codemods, the sync and the queue step.
+ * Nothing after the install runs from memory.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { codemodsAfter, codemodsBetween } from './codemods.ts';
+import { codemodsAfter } from './codemods.ts';
 import { sync } from './sync.ts';
 import { enableQueue, report as reportQueue } from './queue.ts';
 import { resolveWrangler, wranglerRunner } from './wrangler.ts';
@@ -28,10 +36,16 @@ function installedVersion(siteRoot: string): string | null {
   return (JSON.parse(readFileSync(path, 'utf8')) as { version: string }).version;
 }
 
+/** The binary the install just put in place - the one that knows the new version's codemods. */
+function installedBin(siteRoot: string): string {
+  return join(siteRoot, 'node_modules', PACKAGE, 'dist/webm.mjs');
+}
+
 export function run(argv: string[]): number {
   const siteRoot = process.cwd();
   const target = argv.find((a) => !a.startsWith('-')) ?? 'latest';
   const dryRun = argv.includes('--dry-run');
+  const noQueue = argv.includes('--no-queue');
 
   if (!existsSync(join(siteRoot, 'webmonterey.json'))) {
     console.error(`webm upgrade: no webmonterey.json here. Not a WebMonterey site.`);
@@ -39,10 +53,11 @@ export function run(argv: string[]): number {
   }
 
   /*
-   * --codemods-from <version>: run the codemods and the sync against the INSTALLED version, with
-   * no install, no branch, and no clean-tree guard - it is a targeted rerun someone asked for, and its
-   * changes are reviewed the way any edit is. For a site whose package.json was bumped by hand, and for the
-   * end-to-end test, which lays a site out the old way and runs the upgrade path over it.
+   * --codemods-from <version>: the second half of an upgrade, run by the NEW binary - the
+   * codemods since that version, the sync, the queue step. No install, no branch, no clean-tree
+   * guard: the first half did those, or a person is re-running it on purpose (a site whose
+   * package.json was bumped by hand, a site upgraded on a version that had the bug above), and
+   * its changes are reviewed the way any edit is.
    */
   const codemodsFrom = argv[argv.indexOf('--codemods-from') + 1];
   if (argv.includes('--codemods-from')) {
@@ -55,7 +70,9 @@ export function run(argv: string[]): number {
     }
     console.log(`Installed: ${installed}. Running the codemods since ${codemodsFrom}.`);
     runMods(siteRoot, codemodsAfter(codemodsFrom));
-    resync(siteRoot);
+    const synced = resync(siteRoot);
+    if (!noQueue) queueStep(siteRoot);
+    tail(synced);
     return 0;
   }
 
@@ -75,50 +92,47 @@ export function run(argv: string[]): number {
     return 0;
   }
 
-  const branch = `upgrade/${PACKAGE.split('/')[1]}-${target}`;
+  const branch = `upgrade/${PACKAGE.split('/')[1]}-${target.replace(/[^\w.-]+/g, '-')}`;
   if (git(siteRoot, ['rev-parse', '--abbrev-ref', 'HEAD']) === 'main') {
     git(siteRoot, ['checkout', '-b', branch]);
     console.log(`Branched to ${branch}. Never upgrade on main.`);
   }
 
-  execFileSync('npm', ['install', `${PACKAGE}@${target}`], { cwd: siteRoot, stdio: 'inherit' });
+  /* A version, a dist-tag, or a path to a tarball - the last is how the end-to-end test does it. */
+  const spec = /\.tgz$|^[./]/.test(target) ? target : `${PACKAGE}@${target}`;
+  execFileSync('npm', ['install', spec], { cwd: siteRoot, stdio: 'inherit' });
   const to = installedVersion(siteRoot);
   if (!to) {
     console.error('webm upgrade: install did not produce a version. Check the npm output above.');
     return 1;
   }
 
-  runCodemods(siteRoot, from ?? '0.0.0', to);
-  const synced = resync(siteRoot);
-
-  /*
-   * THE QUEUE, on every site. Creates the two queues on the account and wires the config - the
-   * one step of an upgrade that leaves the machine. When it cannot (not logged in, no network)
-   * it writes nothing and says so; the site keeps sending inline and `npx webm queue` finishes
-   * it later. --no-queue skips it for a site that should stay inline.
-   */
-  if (!argv.includes('--no-queue')) {
-    console.log('\nQueue:');
-    const bin = resolveWrangler(siteRoot);
-    reportQueue(enableQueue(siteRoot, bin ? wranglerRunner(siteRoot, bin) : null), siteRoot);
+  /* From here on, the NEW binary. See the header. */
+  const bin = installedBin(siteRoot);
+  if (!existsSync(bin)) {
+    console.error(
+      `webm upgrade: ${bin} is missing after the install. Run npx webm upgrade --codemods-from ${from ?? '0.0.0'}.`,
+    );
+    return 1;
   }
-
-  console.log(`\nNow, in order:`);
-  console.log(`  npx webm doctor`);
-  console.log(`  npm run check && npm run build`);
-  console.log(`  git push -u origin HEAD   # review the preview URL before merging`);
-  if (synced.added.length || synced.removed.length) {
-    console.log(`\nSkill changes are live already. Run /reload-plugins if anything outside`);
-    console.log(`skills/ changed - agents, hooks and .mcp.json are not picked up live.`);
+  console.log(`\nInstalled ${to}. Handing over to it for the codemods, the sync and the queue.`);
+  try {
+    execFileSync(
+      process.execPath,
+      [bin, 'upgrade', '--codemods-from', from ?? '0.0.0', ...(noQueue ? ['--no-queue'] : [])],
+      { cwd: siteRoot, stdio: 'inherit' },
+    );
+  } catch {
+    console.error(
+      `\nwebm upgrade: the ${to} binary failed on the second half. Re-run it: ` +
+        `npx webm upgrade --codemods-from ${from ?? '0.0.0'}`,
+    );
+    return 1;
   }
   return 0;
 }
 
-function runCodemods(siteRoot: string, from: string, to: string): void {
-  runMods(siteRoot, codemodsBetween(from, to));
-}
-
-function runMods(siteRoot: string, mods: ReturnType<typeof codemodsBetween>): void {
+function runMods(siteRoot: string, mods: ReturnType<typeof codemodsAfter>): void {
   if (!mods.length) return;
   console.log(`\nRunning ${mods.length} codemod${mods.length === 1 ? '' : 's'}:`);
   for (const mod of mods) {
@@ -135,4 +149,27 @@ function resync(siteRoot: string): ReturnType<typeof sync> {
   for (const s of synced.added) console.log(`  + /webm:${s}`);
   for (const s of synced.removed) console.log(`  - /webm:${s}`);
   return synced;
+}
+
+/*
+ * THE QUEUE, on every site. Creates the two queues on the account and wires the config - the
+ * one step of an upgrade that leaves the machine. When it cannot (not logged in, no network)
+ * it writes nothing and says so; the site keeps sending inline and `npx webm queue` finishes
+ * it later. --no-queue skips it for a site that should stay inline.
+ */
+function queueStep(siteRoot: string): void {
+  console.log('\nQueue:');
+  const bin = resolveWrangler(siteRoot);
+  reportQueue(enableQueue(siteRoot, bin ? wranglerRunner(siteRoot, bin) : null), siteRoot);
+}
+
+function tail(synced: ReturnType<typeof sync>): void {
+  console.log(`\nNow, in order:`);
+  console.log(`  npx webm doctor`);
+  console.log(`  npm run check && npm run build`);
+  console.log(`  git push -u origin HEAD   # review the preview URL before merging`);
+  if (synced.added.length || synced.removed.length) {
+    console.log(`\nSkill changes are live already. Run /reload-plugins if anything outside`);
+    console.log(`skills/ changed - agents, hooks and .mcp.json are not picked up live.`);
+  }
 }

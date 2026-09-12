@@ -217,3 +217,41 @@ test('a wired site whose dead-letter queue was renamed gets the new queue create
   ]);
   assert.deepEqual(result.changes, ['created queue acme-fail']);
 });
+
+test("wrangler 4.129's words for an existing queue are an existing queue, and the error line is not the banner", async () => {
+  const { errorLine, queueExists } = await import('./queue.ts');
+  const taken = ` ⛅️ wrangler 4.129.0
+────────────────────
+✘ [ERROR] Queue name 'acme-fail' is already taken. Please use a different name and try again. [code: 11009]
+`;
+  assert.equal(queueExists(taken), true);
+  assert.equal(queueExists('✘ [ERROR] Queue "x" already exists.'), true);
+  assert.equal(
+    queueExists('✘ [ERROR] A request to the Cloudflare API failed. quota exceeded'),
+    false,
+  );
+  assert.match(errorLine(taken), /^Queue name 'acme-fail' is already taken/);
+  assert.equal(
+    errorLine(
+      ` ⛅️ wrangler 4.129.0\n────────────────────\n✘ [ERROR] A request to the Cloudflare API failed. [code: 10000]\n`,
+    ),
+    'A request to the Cloudflare API failed. [code: 10000]',
+  );
+  assert.equal(errorLine(''), 'no output');
+
+  /* And the whole step, against that output: the -fail queue is created after a taken main queue. */
+  const root = site(OLD_WRANGLER);
+  const calls: string[][] = [];
+  const runner: WranglerRunner = (args) => {
+    calls.push(args);
+    return args[2] === 'acme'
+      ? { ok: false, output: taken.replace('acme-fail', 'acme') }
+      : { ok: true, output: 'Created queue acme-fail' };
+  };
+  const result = enableQueue(root, runner);
+  assert.equal(result.skipped, null, result.skipped ?? '');
+  assert.deepEqual(
+    calls.map((c) => c[2]),
+    ['acme', 'acme-fail'],
+  );
+});

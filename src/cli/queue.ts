@@ -89,7 +89,7 @@ export function enableQueue(siteRoot: string, wrangler: WranglerRunner | null): 
     const deadLetter = config.match(/"dead_letter_queue"\s*:\s*"([^"]+)"/)?.[1] ?? names.deadLetter;
     for (const name of [names.queue, deadLetter]) {
       const r = wrangler(['queues', 'create', name]);
-      if (r.ok || /already exists/i.test(r.output)) {
+      if (r.ok || queueExists(r.output)) {
         if (r.ok) changes.push(`created queue ${name}`);
         else if (!alreadyWired) changes.push(`queue ${name} already exists`);
         continue;
@@ -182,11 +182,34 @@ function insertBefore(text: string, anchor: RegExp, block: string): string {
 }
 
 const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-const firstLine = (s: string) =>
-  s
+/**
+ * Wrangler's words for a queue that is already there. 4.129 says "Queue name 'x' is already
+ * taken. Please use a different name and try again. [code: 11009]"; older builds said "already
+ * exists". The code is the stable part, so it is matched first. Exported for its test.
+ */
+export function queueExists(output: string): boolean {
+  return /code: 11009\]/.test(output) || /already (exists|taken)/i.test(output);
+}
+
+/**
+ * The line worth showing from a failed wrangler call: the first one that starts with an error
+ * marker, because the first non-empty line is the version banner - which is what a person was
+ * shown, twice, in place of the reason. Exported for its test.
+ */
+export function errorLine(output: string): string {
+  const lines = output
     .split('\n')
     .map((l) => l.trim())
-    .find((l) => l && !l.startsWith('🪵')) ?? 'no output';
+    .filter(Boolean);
+  const marked = lines.find(
+    (l) => /^(✘|\[ERROR\]|ERROR|error)/i.test(l) || /\[code: \d+\]/.test(l),
+  );
+  if (marked) return marked.replace(/^✘\s*\[ERROR\]\s*/, '');
+  const plain = lines.find((l) => !/wrangler \d|^[─━]+$|^🪵|^⛅/.test(l));
+  return plain ?? 'no output';
+}
+
+const firstLine = (s: string) => errorLine(s);
 
 function safeSlug(domain: string): string | null {
   try {

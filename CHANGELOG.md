@@ -11,6 +11,30 @@ build. See `/webm:upgrade`.
 
 ---
 
+## 1.6.2 — 2026-09-12
+
+### Fixed
+
+- **`webm upgrade` now runs the NEW version's codemods.** It runs in the old version's process:
+  it installed the new package and then ran the codemods from the registry it had already
+  imported - the old one, in which a codemod shipping in the version being installed does not
+  exist. One site's 1.5.0 → 1.6.0 and 1.6.0 → 1.6.1 upgrades each applied nothing until
+  `--codemods-from` was run by hand in a fresh process. After the install the command now hands
+  over to the binary it just installed, which runs the codemods, the sync and the queue step;
+  nothing after the install runs from memory. **A site upgrading FROM 1.5.x, 1.6.0 or 1.6.1 is
+  still driven by that older binary once more**, so on those sites follow `npx webm upgrade`
+  with `npx webm upgrade --codemods-from <the version you came from>`; from 1.6.2 onward that is
+  automatic. The end-to-end test now upgrades a site from 1.5.0 across the 1.6 codemods and
+  asserts their changes landed.
+
+- **`webm queue` no longer mistakes an existing queue for a failure.** Wrangler 4.129 says
+  "Queue name 'x' is already taken … [code: 11009]", not "already exists"; the step reported it
+  as a failure - quoting the version banner as the reason - and stopped before creating the
+  `-fail` queue. It matches the error code now, and shows the error line rather than the
+  banner.
+
+---
+
 ## 1.6.1 — 2026-09-12
 
 ### Changed
