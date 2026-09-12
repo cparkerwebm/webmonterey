@@ -86,7 +86,6 @@ quiet.
 | `src/components/**` | **Every visible block. All of them. Always bespoke.** The package ships zero. |
 | `src/content/pages/*.json`, `src/forms/*.json` | The words and the forms. |
 | `src/styles/custom/` | The override seam. `webm.components.custom` beats `webm.components.core` at equal specificity. |
-| `src/pages/webapp/` | The web app, if the site grows one (§5). |
 | The registry: `blocks`, `header`, `footer`, `panels`, `pageHeader`, `webmasterPage`, `structuredData` | How a site hands the package its chrome, its claims, and the shape of the one page the package writes. |
 | `public/`, `wrangler.jsonc`, `migrations/` | Copied verbatim, real resource IDs, the site's own schema. |
 
@@ -204,32 +203,8 @@ proved a rule there never shipped; that test is permanent.
 | `/_actions/*` | Astro | The form endpoint. Always in `run_worker_first`. |
 | `/webm` | package | The component scratch page. **Dev server only** — it does not exist in a build. |
 | `/webmaster`, `/webmaster/og.png` | package | The page every site has: who built it, who to call. Indexable, in the sitemap; the footer credit links here and this page carries the one outbound link to the agency, with its UTM parameters. Its share image is served from the package so a redesign reaches every site on `npm update`. The body is the site's if it exports `webmasterPage` from its registry: the component receives the merged copy (`{ title, description, intro, body }`; `intro` and `body` as HTML, the agency link already in `intro`) and lays it out like the site's other document pages, while the route, the copy, the `<head>`, the share image and the graph stay the package's. Without the export, an `<h1>` (or the site's `pageHeader`) and a stack of paragraphs. Off switch: `webmaster: false`. |
-| `/<app.path>/*` | site | The web app. Reserved on every site; see below. |
+| `/portal/*`, or whatever the site names it | site | A web app, if the site grows one. Not reserved by the package; see below. |
 
-### The web app namespace, reserved from day one
-
-A URL namespace is the one thing that is expensive to retrofit. Once a site has real pages,
-carving out `/portal` later means checking every existing URL for a collision. Reserving it costs
-one config field and an empty folder, so every site has it from the scaffold:
-
-```jsonc
-"app": { "enabled": false, "path": "webapp", "label": "Portal" }
-```
-
-**The directory is fixed: `src/pages/webapp/`, on every site.** `path` is the public URL segment.
-It defaults to the folder name so the common case needs no rewrite; a client whose customers log
-in sets `portal`, `members` or `account`, and the integration injects a middleware that rewrites
-`/<path>/*` onto the folder and redirects the folder name to the public path so one page cannot
-answer at two URLs. The site never writes a middleware file.
-
-From that one field the integration derives the noindex flag and the sitemap exclusion, and
-`webm doctor` checks that `run_worker_first` lists the *public* path in both slash forms, that no
-page JSON shares its name, and that every page under the folder is `prerender = false` — a rewrite
-can only reach a route the Worker renders.
-
-**What is not reserved:** auth, sessions, user tables. Those get built for the first client who
-needs them, in that client's repo, and promoted here only when a second one does. The namespace is
-the part that has to exist before it is needed; the rest can wait until it is.
 
 ---
 
@@ -286,9 +261,26 @@ lost to the injected one silently.
 2. honeypot       no network, no third party; answers as though it succeeded
 3. Turnstile      fail closed - a caught error rejects, never admits; hostname and action bound
 4. D1             the enquiry is now safe even if email fails
-5. notify         failure here does NOT lose the enquiry; notified_at stays NULL for the resend
-6. autoresponse   last, in its own try; a bounce must not take the notification down with it
+5. deliver        two messages to the site's queue - notify, autoresponse - and the response
+                  goes out; inline, in that order, when the site has no queue or it refused
 ```
+
+**The queue is the same reasoning as storing first, one step on.** The test is whether the
+visitor needs the result now: validation, the honeypot, Turnstile and the D1 write, yes; the
+mail, no. So with `features.queue` on the action hands two messages to the site's Cloudflare
+Queue and answers. The consumer - `formQueue()` from the queues include, exported by the
+scaffold's `src/worker.ts` through `defineWorker` - retries a failed notification with a delay
+until wrangler's `max_retries` moves it to the dead-letter queue, where a person can see it; and
+never retries the autoresponse, which was already the rule. Two messages, not one, so the second
+rule does not break the first. The message carries the fields and the request hostname: with D1
+off the queue is the durable record, and the staging redirect needs a hostname a consumer has no
+request to read. A site adds its own kinds - a CRM add, a Slack post - as handlers by kind on the
+same consumer.
+
+**Inline is the fallback, and stays tested.** The flag off, the binding missing, a message over
+the size limit or `send()` throwing all fall to the in-request path every site ran before 1.6.0,
+through the same two functions in `forms/deliver.ts` the consumer calls. A site must deliver mail
+with the queue down, the way it must render with the platform down.
 
 Turnstile is per form: `features.turnstile` switches the capability on, and a form whose
 component renders no widget — a newsletter box — opts out with `"turnstile": false`, because
@@ -326,6 +318,60 @@ domain is live and never before, and why a launched site still declared staging 
 search; doctor fails that.
 
 ---
+
+### Secrets with a live value and a test value
+
+One convention, package-wide. Such a secret is stored on the Worker twice, `<NAME>` and
+`<NAME>_TEST`, suffix at the end so the pair sorts together, for any service that comes in a
+sandbox flavour - never a `_TEST_` infix, never a scheme per service. Which one a request reads
+is the staging rule above, unchanged: `isStagingDeployment(environment, hostname)` picks `_TEST`
+on a staging site or any workers.dev host, live otherwise, so nothing flips at launch and local
+dev - a staging deployment - keeps test keys in `.dev.vars`. `getBindingForMode` and
+`hasBindingForMode` in the workers include wrap `getBinding` with that selection, and the missing-
+secret error names the exact secret that is unset, suffix included. A secret with one value is
+plain `getBinding`, as before. `webm doctor` warns on the two disagreements visible in source: a
+name read in both styles, and `.dev.vars.example` listing a mode-read name without its twin.
+Nothing service-specific ships here; the first site to need it had the Stripe version in a file
+of its own, and that file is now two calls.
+
+### Analytics: the site writes, the platform reads
+
+Every site with `features.analytics` writes to a Workers Analytics Engine dataset named for its
+slug, through the `ANALYTICS` binding: the form pipeline's events - stored, queued, honeypot,
+Turnstile failed, notify sent or failed, autoresponse failed - and a page-view count from a
+one-line beacon on each production page, because prerendered pages never reach the Worker. The
+column contract is in `analytics/datapoint.ts` and is fleet-wide: the platform's queries depend
+on it. What is never written: an identifier, a cookie, an IP, a user agent, a full referrer, a
+query string. Cookieless and aggregate is what lets the beacon run without consent, and it still
+stays off on previews and on pages rendered with `analytics={false}`, the same gates as GTM.
+Reads need an account-level token and belong to the platform (§13); the dataset costs nothing to
+create, so the scaffold ships the binding on.
+
+### Marketing mail: the site's list, Mailgun to send
+
+Offered to select clients behind `features.marketing`. The subscriber list is a table in the
+site's SECOND D1 database, `<slug>-mktg`, bound as `DB_MKTG` with its own `migrations-mktg/`
+folder - the purpose-suffix rule from §2, so the list can be exported, backed up or dropped
+without touching submissions. Mailgun lists are not used: the client owns their subscribers the
+way they own their enquiries, a segment is a WHERE clause, and the site then needs nothing from
+Mailgun but sending, so the marketing key is a domain sending key for `mktg.<domain>` that can do
+nothing else - `MAILGUN_MKTG_API_KEY` and `MAILGUN_MKTG_DOMAIN`, with `_TEST` twins.
+
+What the site takes on in exchange, all in the marketing include: **confirmed opt-in**, always -
+a form with a `subscribe` block writes a pending row and sends a confirmation from the
+transactional domain, and nothing is sent until the link is clicked; **provenance** on every row -
+source, the form's own statement of what the list sends, the timestamps, the IPs - because the
+email spec says an address in a database is not evidence its owner asked; **the two link pages**,
+confirm and unsubscribe, one click each, laid out by the site through the `marketingPage` seam;
+**the webhook** that applies Mailgun's unsubscribed, complained and permanent-failed events to the
+row, so the header unsubscribe mailbox providers show - Mailgun's, on the marketing domain only -
+and the site's list agree; and **campaigns** as batches of 1,000 through Mailgun's recipient
+variables, each batch a queue message retried alone and idempotent per batch, with the
+per-recipient unsubscribe link in the footer. A suppression from a complaint or a bounce is never
+undone by a form; an unsubscribe is, because a person signing up again is a new decision.
+
+Composition is the site's: a portal action, a cron, whatever the client has - the package ships
+`sendCampaign`, not a screen, by the zero-visible-components rule.
 
 ## 9. Structured data: parts, not a verdict
 
@@ -399,7 +445,6 @@ source strips comments first: three checks have fired on their own documentation
 | Check | Fails silently as |
 | --- | --- |
 | `run-worker-first` | 200 to curl, a 404 page in Chrome |
-| `app-namespace` | the app 404s in a browser, a page shadows the portal, or a portal page prerenders and never sees a binding |
 | `block-types-registered` | the block renders as nothing |
 | `compatibility-date` | every page renders as `[object Object]`, or the site refuses to build |
 | `cron-without-handler` | the cron fires and does nothing, forever |
@@ -466,7 +511,7 @@ a page.
 | 6 | Tokens are `design.json`, compiled at build; no `tokens.css` | 3 |
 | 7 | Eight layers in one list, emitted inline ahead of every stylesheet | 4 |
 | 8 | `/webm` scratch page is dev-only | 5 |
-| 9 | Web app namespace reserved on every site: folder fixed, `app.path` public, middleware injected | 5 |
+| 9 | A web app is the site's own namespace, named for its URL and wired directly; nothing reserved (reversed in 1.6.0) | 5 |
 | 10 | Auth, sessions and users are built for the first client who needs them, not reserved | 5 |
 | 11 | The adapter is named in the site's config, never set by the integration | 6 |
 | 12 | `organization` is frozen; the structured-data builders are the escape hatch | 7 |
@@ -484,3 +529,8 @@ a page.
 | 24 | The integration injects no route the site already has a file for; the 404 is the first | 6 |
 | 25 | TypeScript stays where `@astrojs/check` and Astro's language tooling are; 7.x waits for 7.1 | 12 |
 | 26 | The `/webmaster` copy names the client; `{client}` is filled everywhere the copy is used | 7 |
+| 27 | A secret with a test value is `<NAME>_TEST`, selected by the staging rule; nothing flips at launch | 8 |
+| 28 | Mail leaves through the site's queue when it has one, inline when it has not; the autoresponse never retries | 8 |
+| 29 | Analytics: the site writes a slug-named dataset under one fleet-wide column contract; the platform reads; nothing identifying is written | 8 |
+| 30 | The marketing list is the site's own second D1 database; Mailgun only sends, through a domain sending key | 8 |
+| 31 | Confirmed opt-in always, provenance on every row, and a provider suppression is never undone by a form | 8 |

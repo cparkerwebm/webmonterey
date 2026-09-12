@@ -8,10 +8,14 @@
  *   1. Validate the fields          — cheapest, and rejects most malformed input
  *   2. Verify Turnstile             — before anything is stored or sent
  *   3. Write to D1                  — the enquiry is now safe even if email fails
- *   4. Send the notification email   — failure here does NOT lose the enquiry
+ *   4. Deliver the mail             — through the site's queue when it has one, else inline
  *
  * Storing before sending is deliberate. Mailgun is the flakiest step, and a client would
- * rather have an enquiry in the database with a failed notification than a lost one.
+ * rather have an enquiry in the database with a failed notification than a lost one. The queue
+ * is the same reasoning one step further: the visitor needs none of the mail to continue, so
+ * with a queue the response goes out before Mailgun is called, and a failed notification is
+ * retried rather than logged. The mail steps themselves are in forms/deliver.ts, shared with
+ * the consumer, so the inline path stays the tested fallback.
  */
 import { defineAction, ActionError } from 'astro:actions';
 import { z } from 'astro/zod';
@@ -20,14 +24,19 @@ import { run } from '../includes/cloudflare/d1/client.ts';
 import { getBinding, hasBinding } from '../includes/cloudflare/workers/env.ts';
 import { TURNSTILE_FIELD, verifyTurnstile } from '../includes/cloudflare/turnstile/verify.ts';
 import { HONEYPOT_FIELD, isHoneypotFilled } from '../includes/webmonterey/forms/honeypot.ts';
-import { sendEmail } from '../includes/sinch/mailgun/send.ts';
-import { renderHtml, renderText } from '../emails/submission-notification.ts';
+import { autorespond, notify } from '../includes/webmonterey/forms/deliver.ts';
+import { subscribe } from '../includes/webmonterey/marketing/index.ts';
 import {
-  renderHtml as renderAutoresponseHtml,
-  renderText as renderAutoresponseText,
-} from '../emails/autoresponse.ts';
+  fitsQueue,
+  QUEUE_BINDING,
+  type AutoresponseMessage,
+  type FormMessage,
+  type NotifyMessage,
+  type SubscribeMessage,
+} from '../includes/cloudflare/queues/message.ts';
 import { renderSubject } from '../emails/subject.ts';
-import { client, domain, displayName, features, hasClient } from '../includes/webmonterey/site.ts';
+import { track } from '../includes/cloudflare/analytics/track.ts';
+import { client, features, hasClient } from '../includes/webmonterey/site.ts';
 
 /*
  * Form definitions live in the CLIENT repo, at src/forms/*.json - the filename is the form id.
@@ -37,6 +46,23 @@ import { client, domain, displayName, features, hasClient } from '../includes/we
 import { FORMS } from 'virtual:webm/forms';
 
 type FormId = keyof typeof FORMS;
+
+/**
+ * Hand the messages to the site's queue. False - never a throw - when that cannot happen, so the
+ * caller sends inline: a site must deliver mail with the queue down.
+ */
+async function enqueue(messages: FormMessage[]): Promise<boolean> {
+  if (!features?.queue || !hasBinding(QUEUE_BINDING)) return false;
+  if (!messages.every(fitsQueue)) return false;
+  try {
+    const queue = getBinding<Queue<FormMessage>>(QUEUE_BINDING);
+    await queue.sendBatch(messages.map((body) => ({ body })));
+    return true;
+  } catch (error) {
+    console.error('[webm] The queue refused the form messages; sending inline instead:', error);
+    return false;
+  }
+}
 
 export const server = {
   submitForm: defineAction({
@@ -118,6 +144,7 @@ export const server = {
 
       if (honeypot !== false && isHoneypotFilled(formData, honeypot || HONEYPOT_FIELD)) {
         console.warn(`[webm] Honeypot caught a submission to "${formId}". Discarded.`);
+        track({ event: 'form.honeypot', host: context.url.hostname, form: formId });
         return { ok: true, submissionId: undefined, formId };
       }
 
@@ -159,6 +186,12 @@ export const server = {
            * diagnosis and a fortnight of lost enquiries.
            */
           console.error(`[webm] Turnstile verification failed for "${formId}":`, error);
+          track({
+            event: 'form.turnstile_failed',
+            host: context.url.hostname,
+            form: formId,
+            detail: 'error',
+          });
           // Verification is unavailable. REJECT — never admit on error, or an attacker
           // simply breaks the siteverify call to bypass the check entirely.
           throw new ActionError({
@@ -197,6 +230,7 @@ export const server = {
         );
 
         submissionId = stored.meta.last_row_id;
+        track({ event: 'form.stored', host: context.url.hostname, form: formId });
       }
 
       // --- 4. notify -------------------------------------------------------
@@ -230,32 +264,17 @@ export const server = {
       }
 
       if (recipients.length && hasBinding('MAILGUN_API_KEY')) {
-        const emailInput = {
-          form: formId,
-          formName: definition.name,
-          fields,
-          client: displayName(),
-          domain,
-          submissionId,
-        };
-
         const replyTo = fields.find((f) => f.name === 'email')?.value;
+        const hostname = context.url.hostname;
 
-        /*
-         * The sending domain is `webm.<client-domain>`, so `website@` lands as
-         * website@webm.example.com. Deliberately the same mailbox for every template — it is
-         * the address a client sees in their inbox and adds to their safe-senders list, and
-         * one per template would mean doing that repeatedly.
-         */
-        const mailgunDomain = getBinding<string>('MAILGUN_DOMAIN');
-
-        try {
-          await sendEmail({
-            apiKey: getBinding<string>('MAILGUN_API_KEY'),
-            /* So a preview of a PRODUCTION-configured site still redirects. See redirect.ts. */
-            hostname: context.url.hostname,
-            domain: mailgunDomain,
-            from: `${displayName()} Website <website@${mailgunDomain}>`,
+        const messages: FormMessage[] = [
+          {
+            kind: 'form.notify',
+            formId,
+            formName: definition.name,
+            fields,
+            submissionId,
+            hostname,
             to: recipients,
             /*
              * `[Client Name] Topic`. The prefix is dropped rather than sent as `[CHANGEME]`
@@ -264,73 +283,108 @@ export const server = {
              * trivial one.
              */
             subject: renderSubject(hasClient ? client : null, definition.notify.subject, fields),
-            text: renderText(emailInput),
-            html: renderHtml(emailInput),
-            // So hitting reply reaches the enquirer, not the Worker.
             ...(replyTo ? { replyTo } : {}),
-            tags: [`form:${formId}`],
-          });
-
-          if (submissionId !== undefined) {
-            await run(
-              getBinding<D1Database>('DB'),
-              `UPDATE submissions SET notified_at = datetime('now') WHERE id = ?`,
-              submissionId,
-            );
-          }
-        } catch (error) {
-          /*
-           * The enquiry is already stored, so this is recoverable — do NOT fail the request
-           * and tell the visitor to resubmit. `notified_at` stays NULL, which is the query
-           * that finds anything needing a resend.
-           */
-          console.error('[webm] Notification email failed for submission', submissionId, error);
-        }
+          },
+        ];
 
         /*
-         * AUTORESPONSE — the visitor's confirmation. Last, and in its own try, on purpose:
-         * the client's notification is the message that must not be lost, and a bounce from a
-         * visitor's mistyped address must not take it down with it. `notified_at` tracks the
-         * notification only; a failed autoresponse is logged and dropped, because resending a
-         * "we got your message" hours later is worse than never sending it.
+         * AUTORESPONSE — the visitor's confirmation. Its own message, on purpose: the client's
+         * notification is the one that must not be lost, and a bounce from a visitor's mistyped
+         * address must not take it down with it. It is never retried, by either path - a "we got
+         * your message" hours later is worse than never sending it.
          *
          * Skipped entirely unless the form opts in, the visitor gave an address, and there is
          * a client recipient to point Reply-To at. See the `//autoresponse` note in the form
          * definition for why the default is off.
          */
         const autoresponse = 'autoresponse' in definition ? definition.autoresponse : undefined;
-
         if (autoresponse && replyTo && recipients[0]) {
+          messages.push({
+            kind: 'form.autoresponse',
+            formId,
+            formName: definition.name,
+            fields,
+            submissionId,
+            hostname,
+            to: replyTo,
+            subject: renderSubject(hasClient ? client : null, autoresponse.subject, fields),
+            body: autoresponse.body,
+            replyTo: recipients[0],
+          });
+        }
+
+        /*
+         * --- 4. deliver: the queue when the site has one, inline when it has not ----------
+         *
+         * The visitor does not need either email to continue, so with `features.queue` on and
+         * the QUEUE binding present the two messages are handed to the queue and the response
+         * goes out now. The consumer (queues/consumer.ts) retries the notification and never the
+         * autoresponse. Anything that stops the hand-off - the flag off, the binding missing, a
+         * message over the size limit, send() throwing - falls to the inline path below, which is
+         * what every site ran before 1.6.0 and what a site must still do with the queue down.
+         */
+        const queued = await enqueue(messages);
+        track({
+          event: queued ? 'form.queued' : 'form.submitted',
+          host: hostname,
+          form: formId,
+          detail: queued ? 'queued' : 'inline',
+        });
+        if (!queued) {
+          const [notification, confirmation] = messages as [NotifyMessage, AutoresponseMessage?];
           try {
-            await sendEmail({
-              apiKey: getBinding<string>('MAILGUN_API_KEY'),
-              hostname: context.url.hostname,
-              domain: mailgunDomain,
-              from: `${displayName()} <website@${mailgunDomain}>`,
-              // The visitor. The only mail this site sends to an address it does not control.
-              to: [replyTo],
-              subject: renderSubject(hasClient ? client : null, autoresponse.subject, fields),
-              text: renderAutoresponseText({
-                body: autoresponse.body,
-                fields,
-                client: displayName(),
-                domain,
-              }),
-              html: renderAutoresponseHtml({
-                body: autoresponse.body,
-                fields,
-                client: displayName(),
-                domain,
-              }),
-              /*
-               * INVERTED relative to the notification above: a visitor hitting reply must
-               * reach the client, not be sent their own address back.
-               */
-              replyTo: recipients[0],
-              tags: [`form:${formId}`, 'autoresponse'],
-            });
+            await notify(notification);
           } catch (error) {
-            console.error('[webm] Autoresponse failed for submission', submissionId, error);
+            /*
+             * The enquiry is already stored, so this is recoverable — do NOT fail the request
+             * and tell the visitor to resubmit. `notified_at` stays NULL, which is the query
+             * that finds anything needing a resend.
+             */
+            console.error('[webm] Notification email failed for submission', submissionId, error);
+          }
+          if (confirmation) {
+            try {
+              await autorespond(confirmation);
+            } catch (error) {
+              console.error('[webm] Autoresponse failed for submission', submissionId, error);
+            }
+          }
+        }
+      }
+
+      /*
+       * --- 5. the list, if this form feeds one ------------------------------------------
+       *
+       * Independent of the notification: a newsletter box has no recipient to notify and still
+       * signs people up. Off the request like the mail - through the queue when there is one -
+       * because it sends the confirmation email. A failure here is logged, never shown: the
+       * visitor's enquiry, if the form was also one, is already safe.
+       */
+      const signup = 'subscribe' in definition ? definition.subscribe : undefined;
+      const address = fields.find((f) => f.name === 'email')?.value;
+      if (features?.marketing && signup && address) {
+        const message: SubscribeMessage = {
+          kind: 'form.subscribe',
+          formId,
+          email: address,
+          name: fields.find((f) => f.name === 'name')?.value || undefined,
+          source: `${formId}@${context.url.pathname}`,
+          purposes: signup.purposes,
+          policyVersion: signup.policyVersion,
+          ip: context.request.headers.get('CF-Connecting-IP'),
+          vars: Object.fromEntries(
+            (signup.vars ?? []).map((name) => [
+              name,
+              fields.find((f) => f.name === name)?.value ?? '',
+            ]),
+          ),
+          hostname: context.url.hostname,
+        };
+        if (!(await enqueue([message]))) {
+          try {
+            await subscribe(message);
+          } catch (error) {
+            console.error('[webm] Newsletter signup failed for', formId, error);
           }
         }
       }

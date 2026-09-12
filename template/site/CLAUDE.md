@@ -239,12 +239,13 @@ src/
   content/pages/*.json      the words. One file per route; home.json is `/`.
   forms/*.json              form definitions. Filename is the form id.
   actions/index.ts          re-exports the package pipeline. Wrap to customize.
-  pages/webapp/             the web app, if this site grows one. Folder is fixed; the public
-                            URL is `app.path` in webmonterey.json. Every page `prerender = false`.
+  worker.ts                 the Worker entrypoint: the adapter's fetch plus the queue consumer;
+                            a cron adds scheduled() here. Named by "main" in wrangler.jsonc.
   styles/custom/            per-client CSS overrides.
   assets/                   images processed at build time.
 public/                     served verbatim. Favicons, _headers.
 migrations/                 D1 schema. Additive only — never edit an applied migration.
+migrations-mktg/            the marketing database's schema, only on a site with features.marketing.
 ```
 
 ## Component IDs

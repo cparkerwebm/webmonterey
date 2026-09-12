@@ -1,0 +1,17 @@
+---
+/*
+ * Builds the Turnstile widget both ways so build.test.mjs can read the output: the default
+ * markup, which must stay byte-identical to what every site renders today, and interaction-only,
+ * which writes the attribute and drops the reserved height. A test site key - never a real one.
+ */
+import Base from '@cparkerwebm/webmonterey/layouts/base.astro';
+import Turnstile from '@cparkerwebm/webmonterey/cloudflare/turnstile/Turnstile.astro';
+const TEST_SITE_KEY = '1x00000000000000000000AA';
+---
+
+<Base title="Turnstile" noindex>
+  <form id="default"><Turnstile siteKey={TEST_SITE_KEY} action="contact" /></form>
+  <form id="quiet">
+    <Turnstile siteKey={TEST_SITE_KEY} action="subscribe" appearance="interaction-only" />
+  </form>
+</Base>

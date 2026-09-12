@@ -9,6 +9,8 @@
  *     export const prerender = false;
  */
 import { env } from 'cloudflare:workers';
+import { environment } from '../../webmonterey/site.ts';
+import { bindingMode as modeFor, bindingName, type BindingMode } from './mode.ts';
 
 /*
  * `env` is deliberately NOT re-exported.
@@ -53,4 +55,33 @@ export function getBinding<T>(name: string): T {
 export function hasBinding(name: string): boolean {
   const value = (env as unknown as Record<string, unknown>)[name];
   return value !== undefined && value !== null && value !== '';
+}
+
+/*
+ * SECRETS WITH A LIVE AND A TEST VALUE. The naming and the selection rule are in mode.ts, which
+ * is where they are tested; these are the bindings of that rule to this site's `environment`,
+ * wrapping getBinding and hasBinding so a missing secret fails with the same message, naming the
+ * exact secret that is unset - suffix included.
+ *
+ *     const key = getBindingForMode<string>('STRIPE_SECRET_KEY', context.url.hostname);
+ *
+ * reads STRIPE_SECRET_KEY_TEST on a staging deployment and STRIPE_SECRET_KEY otherwise. Pass the
+ * request hostname when there is one; a scheduled handler has none and falls to `environment`.
+ */
+
+export { TEST_SUFFIX, bindingName, type BindingMode } from './mode.ts';
+
+/** Which value this deployment reads: `test` on staging or any workers.dev host, else `live`. */
+export function bindingMode(hostname?: string | null): BindingMode {
+  return modeFor(environment, hostname);
+}
+
+/** `getBinding` of the mode-selected name: `<NAME>_TEST` in test mode, `<NAME>` in live. */
+export function getBindingForMode<T>(name: string, hostname?: string | null): T {
+  return getBinding<T>(bindingName(name, bindingMode(hostname)));
+}
+
+/** `hasBinding` of the mode-selected name. */
+export function hasBindingForMode(name: string, hostname?: string | null): boolean {
+  return hasBinding(bindingName(name, bindingMode(hostname)));
 }

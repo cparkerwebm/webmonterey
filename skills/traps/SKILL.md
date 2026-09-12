@@ -237,8 +237,10 @@ curl 'http://127.0.0.1:8787/__scheduled?cron=0+*+*+*+*'
 
 ### The fix, which is supported and already in production
 
-Point `main` at a **source** entrypoint that re-exports the adapter's own handler. This is the one
-legitimate reason to set that key.
+Point `main` at a **source** entrypoint that re-exports the adapter's own handler. Since 1.6.0
+every scaffold has one - `src/worker.ts`, exporting `defineWorker({ queue: formQueue() })` for
+the form queue - so a cron is one more handler in a file that already exists. A site scaffolded
+before 1.6.0 writes the file and sets `main`.
 
 ```jsonc
 // wrangler.jsonc
@@ -249,9 +251,11 @@ legitimate reason to set that key.
 ```ts
 // src/worker.ts
 import { defineWorker } from '@cparkerwebm/webmonterey/worker';
+import { formQueue } from '@cparkerwebm/webmonterey/cloudflare/queues';
 import { runSweep } from './includes/sweep.ts';
 
 export default defineWorker({
+  queue: formQueue(),
   scheduled: (controller, env, ctx) => ctx.waitUntil(runSweep(env)),
 });
 ```

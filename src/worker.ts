@@ -1,5 +1,5 @@
 /*
- * The building block for a site that needs a Cron Trigger.
+ * The building block for a site that needs a Cron Trigger or a queue consumer.
  *
  * WHY A SITE WOULD REPLACE THE GENERATED ENTRYPOINT AT ALL. The adapter normally writes the
  * Worker entrypoint itself, and that generated file exports `fetch` and nothing else. A Cron
@@ -54,7 +54,11 @@ export interface WorkerHandlers {
     env: Env,
     ctx: { waitUntil(promise: Promise<unknown>): void },
   ) => void | Promise<void>;
-  queue?: (batch: unknown, env: Env, ctx: unknown) => void | Promise<void>;
+  /**
+   * The queue consumer. `formQueue()` from the queues include is the one every site with a
+   * queue exports; it handles the package's form messages and dispatches a site's own kinds.
+   */
+  queue?: (batch: MessageBatch<unknown>, env: Env, ctx: ExecutionContext) => void | Promise<void>;
 }
 
 /**

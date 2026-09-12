@@ -55,6 +55,16 @@ export interface SendEmailOptions {
    */
   attachments?: Array<{ filename: string; content: string; contentType: string }>;
   /**
+   * Per-recipient substitutions for a BATCH send: keyed by address, up to 1,000 recipients in
+   * one call, each getting their own message with `%recipient.name%`-style placeholders filled
+   * from their entry. Campaigns use it for the unsubscribe link. On a staging deployment every
+   * recipient is redirected to one inbox, so the first recipient's variables are what that
+   * inbox sees - enough to check the rendering, which is all staging is for.
+   */
+  recipientVariables?: Record<string, Record<string, unknown>>;
+  /** Extra headers, by name. A List-Unsubscribe pair, an idempotency key, a campaign tag. */
+  headers?: Record<string, string>;
+  /**
    * The hostname this send is happening on, when there is a request to take one from.
    *
    * Only ever used to REDIRECT recipients away from real people on a preview — see
@@ -113,6 +123,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
    * one that will be missed. See redirect.ts for what is rewritten and why.
    */
   const staging = isStagingDeployment(environment, hostname);
+  let deliveredTo: string[] = Array.isArray(to) ? to : [to];
 
   if (staging) {
     /*
@@ -132,6 +143,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
 
     body.set('subject', redirectedSubject(subject, redirected.original));
     for (const address of redirected.to) body.append('to', address);
+    deliveredTo = redirected.to;
     for (const [name, value] of Object.entries(redirected.headers)) body.set(`h:${name}`, value);
     body.set('h:Reply-To', redirected.replyTo);
 
@@ -149,6 +161,19 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
   if (text) body.set('text', text);
   if (html) body.set('html', html);
   if (tags) for (const tag of tags) body.append('o:tag', tag);
+  if (options.headers) {
+    for (const [name, value] of Object.entries(options.headers)) body.set(`h:${name}`, value);
+  }
+  if (options.recipientVariables) {
+    body.set(
+      'recipient-variables',
+      JSON.stringify(
+        staging
+          ? stagingVariables(options.recipientVariables, deliveredTo)
+          : options.recipientVariables,
+      ),
+    );
+  }
 
   for (const file of attachments ?? []) {
     body.append('attachment', new Blob([file.content], { type: file.contentType }), file.filename);
@@ -183,4 +208,16 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
   }
 
   return (await response.json()) as SendEmailResult;
+}
+
+/**
+ * On staging every recipient became one inbox; give that inbox the first recipient's variables
+ * so the placeholders render as they would for a real person. Exported for its test.
+ */
+export function stagingVariables(
+  variables: Record<string, Record<string, unknown>>,
+  deliveredTo: string[],
+): Record<string, Record<string, unknown>> {
+  const first = Object.values(variables)[0] ?? {};
+  return Object.fromEntries(deliveredTo.map((address) => [address, first]));
 }

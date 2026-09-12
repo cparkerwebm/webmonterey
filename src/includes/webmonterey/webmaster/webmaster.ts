@@ -111,7 +111,8 @@ export interface WebmasterPageProps {
   body: string[];
   /**
    * The outbound button: `copy.webmaster.cta` as text, and the same attributed agency URL the
-   * intro links to. Render it as a link with `AGENCY_LINK_ATTRS` spread on - it leaves the site.
+   * intro links to. Render it as a link with `AGENCY_CTA_ATTRS` spread on - it leaves the site, and
+   * the marker in that constant is what spaces it from the paragraph above.
    */
   cta: { label: string; href: string };
 }
@@ -122,6 +123,17 @@ export interface WebmasterPageProps {
  * by the built-in page and by introHtml, so the intro link and the button cannot disagree.
  */
 export const AGENCY_LINK_ATTRS = { target: '_blank', rel: 'noopener' } as const;
+
+/**
+ * The attributes the BUTTON carries: the link attributes above, plus a marker the page styles.
+ *
+ * WHY A MARKER RATHER THAN A CLASS. A site that lays the page out itself puts its own button
+ * class on the anchor, and the package cannot know what that class spaces itself with. On one
+ * site the button sat almost touching the paragraph above it. The marker travels with the button
+ * whatever class it wears, and the page gives it a floor of 25px above - see webmaster.astro. The
+ * intro link keeps the plain constant, so the two stay distinguishable.
+ */
+export const AGENCY_CTA_ATTRS = { ...AGENCY_LINK_ATTRS, 'data-webm-cta': '' } as const;
 
 /**
  * `{client}` in a copy string becomes the client's name; everything else is left alone.

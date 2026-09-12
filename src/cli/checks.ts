@@ -8,15 +8,7 @@
  * Pure - each check takes a context and returns a result, with no I/O of its own - so the suite
  * is testable without a site on disk.
  */
-import {
-  APP_DIR,
-  appEnabled,
-  isValidTimeZone,
-  PLACEHOLDER,
-  isConfigured,
-  resolveAppPath,
-  workerFirstPaths,
-} from '../includes/webmonterey/config.ts';
+import { isValidTimeZone, PLACEHOLDER, isConfigured } from '../includes/webmonterey/config.ts';
 import type { SiteConfig } from '../includes/webmonterey/config.ts';
 import { MCP_NAMES, MCP_SERVERS, mcpGaps } from './mcp.ts';
 
@@ -37,7 +29,17 @@ export interface CheckContext {
     compatibility_date?: string;
     triggers?: { crons?: string[] };
     main?: string;
-    d1_databases?: Array<{ binding?: string; database_name?: string; database_id?: string }>;
+    d1_databases?: Array<{
+      binding?: string;
+      database_name?: string;
+      database_id?: string;
+      migrations_dir?: string;
+    }>;
+    queues?: {
+      producers?: Array<{ binding?: string; queue?: string }>;
+      consumers?: Array<{ queue?: string; dead_letter_queue?: string }>;
+    };
+    analytics_engine_datasets?: Array<{ binding?: string; dataset?: string }>;
   } | null;
   /** Source of the custom Worker entrypoint named by wrangler `main`, or null. */
   workerEntry: string | null;
@@ -59,8 +61,14 @@ export interface CheckContext {
   emails: Map<string, string>;
   /** migrations/*.sql, keyed by path. */
   migrations: Map<string, string>;
+  /** migrations-mktg/*.sql - the marketing database's own folder - keyed by path. */
+  migrationsMktg: Map<string, string>;
   /** Source of src/components/registry.ts, or null when the site has none. */
   registry: string | null;
+  /** Source of src/content.config.ts, or null when the site has none. */
+  contentConfig: string | null;
+  /** Contents of .dev.vars.example, or null when absent. Committed, unlike .dev.vars. */
+  devVarsExample: string | null;
   /** Files that must exist on disk, mapped to whether they do. */
   present: Record<string, boolean>;
   /** public/ files that are byte-identical to the package's seeded placeholder. */
@@ -267,11 +275,181 @@ export const CHECKS: Check[] = [
       if (!ctx.site.features?.d1) return pass;
       const bindings = ctx.wrangler?.d1_databases ?? [];
       if (bindings.some((b) => b.binding === 'DB' && b.database_id)) return pass;
+      /*
+       * The common shape of this failure: `wrangler d1 create --update-config` without
+       * `--binding=DB` names the binding after the database, so the entry is there with the
+       * wrong name. Say which name to change rather than that something is missing.
+       */
+      const misnamed = bindings.find((b) => b.database_id && b.binding && b.binding !== 'DB');
+      if (misnamed) {
+        return fail(
+          `features.d1 is true and wrangler binds the database as "${misnamed.binding}" - the ` +
+            `package writes through DB. Rename the binding to DB in wrangler.jsonc (the create ` +
+            `command takes --binding=DB to get it right first time).`,
+        );
+      }
       return fail(
         bindings.length === 0
           ? 'features.d1 is true and wrangler has no d1_databases block'
           : 'features.d1 is true but no d1_databases entry binds DB with a database_id',
       );
+    },
+  },
+  {
+    id: 'queue-binding',
+    title: 'features.queue has a queue to send through and a consumer to read it',
+    silentAs:
+      'the action falls back to sending inline on every submission, so the queue changes nothing and nobody notices; or messages are produced and never consumed, and every notification sits in the queue until it expires',
+    run(ctx) {
+      if (!ctx.site.features?.queue) return pass;
+      const queues = ctx.wrangler?.queues;
+      const producer = (queues?.producers ?? []).find((p) => p.binding === 'QUEUE' && p.queue);
+      if (!producer) {
+        return fail(
+          'features.queue is true but wrangler.jsonc has no queues.producers entry binding QUEUE. ' +
+            'The scaffold left the block commented out until the queues exist - create them and ' +
+            'uncomment it, or switch the feature off.',
+        );
+      }
+      const consumer = (queues?.consumers ?? []).find((c) => c.queue === producer.queue);
+      if (!consumer) {
+        return fail(
+          `the Worker produces to "${producer.queue}" but declares no consumer for it, so every ` +
+            `message waits in the queue until it expires. Add the queues.consumers entry.`,
+        );
+      }
+      if (!consumer.dead_letter_queue) {
+        return warn(
+          `the consumer for "${producer.queue}" has no dead_letter_queue, so a notification that ` +
+            `fails every retry is dropped rather than kept where a person can see it.`,
+        );
+      }
+      /*
+       * The consumer is a `queue` export on the Worker entrypoint, and the adapter's generated
+       * entry has none - the same trap as a cron, see cron-without-handler.
+       */
+      if (!ctx.wrangler?.main) {
+        return fail(
+          'a consumer is declared but wrangler.jsonc sets no "main", so the Worker has no queue() ' +
+            'handler to receive it. Point "main" at src/worker.ts exporting defineWorker({ queue }).',
+        );
+      }
+      if (ctx.workerEntry === null) {
+        return warn(
+          `"main" is ${ctx.wrangler.main} but that file was not found from the site root.`,
+        );
+      }
+      const source = stripComments(ctx.workerEntry);
+      if (!/\bqueue\b\s*[(:]/.test(source) && !/\bformQueue\b/.test(source)) {
+        return fail(
+          `${ctx.wrangler.main} exports no queue() handler, so the declared consumer has nothing ` +
+            `to run. defineWorker({ queue: formQueue() }) is the shape.`,
+        );
+      }
+      return pass;
+    },
+  },
+  {
+    id: 'analytics-binding',
+    title: 'features.analytics has a dataset to write to and a route for the beacon',
+    silentAs:
+      'every event is dropped before it is written, or every page view 404s in a browser and is counted in curl',
+    run(ctx) {
+      const bound = (ctx.wrangler?.analytics_engine_datasets ?? []).some(
+        (d) => d.binding === 'ANALYTICS',
+      );
+      if (!ctx.site.features?.analytics) {
+        return bound
+          ? warn(
+              'wrangler.jsonc binds ANALYTICS but features.analytics is off, so nothing is ever ' +
+                'written to it. Switch the feature on, or drop the binding.',
+            )
+          : pass;
+      }
+      if (!bound) {
+        return fail(
+          'features.analytics is true but wrangler.jsonc has no analytics_engine_datasets entry ' +
+            'binding ANALYTICS. Add { "binding": "ANALYTICS", "dataset": "<slug>" } - nothing ' +
+            'needs creating, the dataset appears on first write.',
+        );
+      }
+      const listed = ctx.wrangler?.assets?.run_worker_first ?? [];
+      const covered = listed.some(
+        (e) => e === '/_webm/*' || (e.endsWith('/*') && '/_webm/beacon'.startsWith(e.slice(0, -1))),
+      );
+      if (!covered) {
+        return fail(
+          'the page-view beacon posts to /_webm/beacon, an on-demand route, and run_worker_first ' +
+            'does not cover it - so the asset router answers a document-style request with the ' +
+            '404 page. Add "/_webm/*".',
+        );
+      }
+      return pass;
+    },
+  },
+  {
+    id: 'mktg-binding',
+    title: 'features.marketing has its database, its migrations and its routes',
+    silentAs:
+      'a signup throws after the enquiry is stored, a confirm link 404s in a browser, or the webhook never reaches the Worker and the list drifts from what Mailgun knows',
+    run(ctx) {
+      if (!ctx.site.features?.marketing) return pass;
+      const problems: string[] = [];
+
+      const entry = (ctx.wrangler?.d1_databases ?? []).find((d) => d.binding === 'DB_MKTG');
+      if (!entry?.database_id) {
+        problems.push(
+          'no d1_databases entry binds DB_MKTG - the list lives in a SECOND database, <slug>-mktg ' +
+            '(npx wrangler d1 create <slug>-mktg --binding=DB_MKTG --update-config)',
+        );
+      } else if (entry.migrations_dir !== 'migrations-mktg') {
+        problems.push(
+          `the DB_MKTG entry needs "migrations_dir": "migrations-mktg", so its migrations are not ` +
+            `applied to the submissions database`,
+        );
+      }
+
+      if (ctx.migrationsMktg.size === 0) {
+        problems.push(
+          'migrations-mktg/ is empty - webm sync seeds it once features.marketing is on',
+        );
+      } else if (
+        ![...ctx.migrationsMktg.values()].some((sql) =>
+          /CREATE TABLE[^;]*\bsubscribers\b/i.test(sql),
+        )
+      ) {
+        problems.push('migrations-mktg/ has no migration creating the subscribers table');
+      }
+
+      const listed = ctx.wrangler?.assets?.run_worker_first ?? [];
+      const covered = (p: string) =>
+        listed.some((e) => e === p || (e.endsWith('/*') && p.startsWith(e.slice(0, -1))));
+      const routes = [
+        '/subscribe/confirm',
+        '/subscribe/confirm/',
+        '/unsubscribe',
+        '/unsubscribe/',
+        '/_webm/mailgun',
+      ];
+      const absent = routes.filter((r) => !covered(r));
+      if (absent.length) {
+        problems.push(
+          `run_worker_first does not cover ${absent.join(', ')} - add "/subscribe/*", "/unsubscribe", ` +
+            `"/unsubscribe/" and "/_webm/*"`,
+        );
+      }
+
+      const example = ctx.devVarsExample ?? '';
+      const named = [
+        'MAILGUN_MKTG_API_KEY',
+        'MAILGUN_MKTG_DOMAIN',
+        'MAILGUN_WEBHOOK_SIGNING_KEY',
+      ].filter((n) => !new RegExp(`^\\s*#?\\s*${n}`, 'm').test(example));
+      if (ctx.devVarsExample !== null && named.length) {
+        problems.push(`.dev.vars.example does not name ${named.join(', ')}`);
+      }
+
+      return problems.length ? fail(problems.join('; ')) : pass;
     },
   },
   {
@@ -281,17 +459,7 @@ export const CHECKS: Check[] = [
     run(ctx) {
       const listed = ctx.wrangler?.assets?.run_worker_first ?? [];
       const missing: string[] = [];
-      /*
-       * The app folder is served at its PUBLIC path, which is what the asset router sees. A
-       * route file at src/pages/webapp/x.astro is reached as /portal/x when the site has named
-       * a path, and that is the entry run_worker_first needs.
-       */
-      const appPath = appEnabled(ctx.site) ? resolveAppPath(ctx.site) : APP_DIR;
-      const publicRoute = (route: string) =>
-        route === `/${APP_DIR}` || route.startsWith(`/${APP_DIR}/`)
-          ? `/${appPath}${route.slice(APP_DIR.length + 1)}`
-          : route;
-      for (const route of onDemandRoutes(ctx.pages).map(publicRoute)) {
+      for (const route of onDemandRoutes(ctx.pages)) {
         const covered = (p: string) =>
           listed.some(
             (entry) => entry === p || (entry.endsWith('/*') && p.startsWith(entry.slice(0, -1))),
@@ -299,49 +467,6 @@ export const CHECKS: Check[] = [
         for (const form of [route, `${route}/`]) if (!covered(form)) missing.push(form);
       }
       return missing.length ? fail(`not listed: ${[...new Set(missing)].join(', ')}`) : pass;
-    },
-  },
-  {
-    id: 'app-namespace',
-    title: 'The web app namespace is wired for the path it is served at',
-    silentAs:
-      'the app 404s in a browser and works in curl, a marketing page shadows the portal, or a portal page prerenders and never sees a binding',
-    run(ctx) {
-      const appPages = [...ctx.pages.keys()].filter((f) => f.includes(`src/pages/${APP_DIR}/`));
-
-      if (!appEnabled(ctx.site)) {
-        return appPages.length
-          ? warn(
-              `src/pages/${APP_DIR}/ has ${appPages.length} route(s) but app.enabled is false in ` +
-                `webmonterey.json, so nothing derives the noindex, sitemap exclusion or ` +
-                `run_worker_first entries for them. Switch it on, or move the routes.`,
-            )
-          : pass;
-      }
-
-      const path = resolveAppPath(ctx.site);
-      const problems: string[] = [];
-
-      /* Both slash forms and the wildcard, at the PUBLIC path - see workerFirstPaths. */
-      const listed = new Set(ctx.wrangler?.assets?.run_worker_first ?? []);
-      const needed = workerFirstPaths(ctx.site).filter((p) => p !== '/_actions/*');
-      const absent = needed.filter((p) => !listed.has(p));
-      if (absent.length) problems.push(`run_worker_first is missing ${absent.join(', ')}`);
-
-      /* A page JSON named like the app path would render at the same URL and one would win. */
-      if (ctx.contentPages.includes(path)) {
-        problems.push(`src/content/pages/${path}.json collides with app.path "${path}"`);
-      }
-
-      /* A rewrite can only reach a route the Worker renders; a prerendered app page is a file. */
-      const prerendered = appPages.filter(
-        (f) => !/export\s+const\s+prerender\s*=\s*false/.test(ctx.pages.get(f) ?? ''),
-      );
-      if (prerendered.length) {
-        problems.push(`not \`prerender = false\`: ${prerendered.join(', ')}`);
-      }
-
-      return problems.length ? fail(problems.join('; ')) : pass;
     },
   },
   {
@@ -683,6 +808,135 @@ export const CHECKS: Check[] = [
     },
   },
   {
+    id: 'union-matches-registry',
+    title: 'The block union and the registry name the same components',
+    silentAs:
+      'a component in the registry but not the union rejects every page that uses it at build, and one in the union but not the registry renders as nothing',
+    run(ctx) {
+      /*
+       * Adding a component is three things - the folder, the registry, the union - and the
+       * skill says so, which is exactly why this gets a check: the third step is the one that is
+       * forgotten, and each half fails differently. Registry-only: the page JSON fails the
+       * schema, naming the type as invalid, on a component that plainly exists. Union-only: the
+       * schema accepts the block and the router renders nothing.
+       *
+       * Read from structure. The union is the identifiers passed to webmontereyCollections,
+       * each resolved through its import to a `<kind>/<id>/schema.ts` path, so the folder ID is
+       * what is compared - not the local variable name, which is anything the author liked.
+       */
+      if (ctx.registry === null || ctx.contentConfig === null) return pass;
+      const config = stripComments(ctx.contentConfig);
+
+      const call = config.match(/webmontereyCollections\s*\(\s*\[([^\]]*)\]/);
+      if (!call) return pass;
+      const idents = call[1]!
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const byIdent = new Map<string, string>();
+      for (const m of config.matchAll(
+        /import\s*\{\s*schema\s+as\s+([A-Za-z_$][\w$]*)\s*\}\s*from\s*['"][^'"]*\/([^/'"]+)\/schema\.ts['"]/g,
+      )) {
+        byIdent.set(m[1]!, m[2]!);
+      }
+      const union = new Set(idents.map((i) => byIdent.get(i) ?? i));
+
+      const registered = new Set(
+        [...stripComments(ctx.registry).matchAll(/['"]([A-Za-z][\w.-]*)['"]\s*:/g)].map(
+          (m) => m[1]!,
+        ),
+      );
+      if (union.size === 0 && registered.size === 0) return pass;
+
+      const unionOnly = [...union].filter((t) => !registered.has(t));
+      const registryOnly = [...registered].filter((t) => !union.has(t));
+      if (unionOnly.length === 0 && registryOnly.length === 0) return pass;
+
+      const parts: string[] = [];
+      if (registryOnly.length) {
+        parts.push(
+          `in src/components/registry.ts but not in the union passed to webmontereyCollections: ` +
+            `${registryOnly.join(', ')} - a page using one fails the content schema`,
+        );
+      }
+      if (unionOnly.length) {
+        parts.push(
+          `in the union but not in src/components/registry.ts: ${unionOnly.join(', ')} - a page ` +
+            `using one renders it as nothing`,
+        );
+      }
+      return warn(parts.join('; '));
+    },
+  },
+  {
+    id: 'binding-modes',
+    title: 'A secret read in two modes is read in two modes everywhere',
+    silentAs:
+      'one mode is unconfigured: the staging site reads a live key, or the launched site reads a test one',
+    run(ctx) {
+      /*
+       * Source-level, and that is its limit: secret values cannot be read back from wrangler, so
+       * this checks what the code EXPECTS, never what is set on the Worker. Two disagreements
+       * are visible in source. A name read through getBindingForMode in one file and through
+       * plain getBinding - in either spelling - in another bypasses the selection in the second
+       * place. And a mode-read name listed in .dev.vars.example without its _TEST twin means the
+       * next session copies the example and local dev, which is a staging deployment, reads a
+       * secret that is not there.
+       */
+      const sources = [ctx.actions, ctx.includes, ctx.pages, ctx.components, ctx.emails]
+        .flatMap((m) => [...m.entries()])
+        .map(([file, src]) => [file, stripComments(src)] as const);
+      if (ctx.workerEntry) sources.push(['worker entry', stripComments(ctx.workerEntry)]);
+
+      const moded = new Map<string, string>();
+      const plain = new Map<string, string[]>();
+      for (const [file, src] of sources) {
+        for (const m of src.matchAll(
+          /\b(?:get|has)BindingForMode\s*(?:<[^>]*>)?\s*\(\s*['"]([A-Z0-9_]+)['"]/g,
+        )) {
+          if (!moded.has(m[1]!)) moded.set(m[1]!, file);
+        }
+        for (const m of src.matchAll(
+          /\b(?:get|has)Binding\s*(?:<[^>]*>)?\s*\(\s*['"]([A-Z0-9_]+)['"]/g,
+        )) {
+          plain.set(m[1]!, [...(plain.get(m[1]!) ?? []), file]);
+        }
+      }
+      if (moded.size === 0) return pass;
+
+      const problems: string[] = [];
+      for (const [name, file] of moded) {
+        for (const spelling of [name, `${name}_TEST`]) {
+          const files = plain.get(spelling);
+          if (files) {
+            problems.push(
+              `${spelling} is read with plain getBinding in ${files[0]} but ${name} is read ` +
+                `through getBindingForMode in ${file} - the first ignores the mode`,
+            );
+          }
+        }
+      }
+
+      const example = ctx.devVarsExample;
+      if (example !== null) {
+        const listed = new Set(
+          [...example.matchAll(/^\s*#?\s*([A-Z0-9_]+)\s*=/gm)].map((m) => m[1]!),
+        );
+        for (const name of moded.keys()) {
+          if (listed.has(name) && !listed.has(`${name}_TEST`)) {
+            problems.push(
+              `.dev.vars.example lists ${name} but not ${name}_TEST - local dev is a staging ` +
+                `deployment and reads the _TEST value`,
+            );
+          }
+        }
+      }
+
+      return problems.length ? warn(problems.join('; ')) : pass;
+    },
+  },
+  {
     id: 'webmaster-credit',
     title: 'Something renders the webmaster credit',
     silentAs:
@@ -730,6 +984,14 @@ export const CHECKS: Check[] = [
        * default has still made a choice, but they will not have made it by accident.
        */
       if (ctx.placeholders.length === 0) return pass;
+
+      /*
+       * The seed IS WebMonterey's mark, so on the agency's own site the files are identical by
+       * right, and a check that fails that repo forever is one people learn to skip. One agency
+       * site in the fleet; a domain check rather than a config flag, for the same reason as the
+       * credit check above.
+       */
+      if (ctx.site.domain === 'webmonterey.com') return pass;
 
       const detail =
         `still the package's placeholder, byte for byte: ${ctx.placeholders.join(', ')}. ` +

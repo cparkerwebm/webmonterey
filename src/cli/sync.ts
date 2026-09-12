@@ -50,6 +50,7 @@ import {
   readdirSync,
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import { loadSiteFiles } from '../integration/config.ts';
 import { PACKAGE_ROOT, packageVersion } from './package-root.ts';
 import { DENY_RULES, projectSettings, withDenyRules } from './settings.ts';
 
@@ -72,6 +73,8 @@ interface SyncResult {
   workflows: string[];
   /** Migrations copied because the site did not have them. Never includes an existing file. */
   migrations: string[];
+  /** migrations-mktg/, seeded only when features.marketing is on. */
+  migrationsMktg: string[];
   /**
    * What changed in .claude/settings.json: deny rules added, stale ones removed, the file
    * created when there was none, or why it was left alone.
@@ -256,6 +259,14 @@ export function sync(siteRoot: string): SyncResult {
      */
     workflows: syncDir(join(template, 'workflows'), join(siteRoot, '.github/workflows')),
     migrations: addMissing(join(template, 'migrations'), join(siteRoot, 'migrations')),
+    /*
+     * The marketing database's folder, ONLY when the feature is on: a second migrations folder
+     * on a site that will never have a second database is a thing the next session has to
+     * understand, and wrangler would happily apply it to the wrong database.
+     */
+    migrationsMktg: marketingOn(siteRoot)
+      ? addMissing(join(template, 'migrations-mktg'), join(siteRoot, 'migrations-mktg'))
+      : [],
     settings: ensureSettings(siteRoot),
   };
 }
@@ -292,6 +303,11 @@ export function run(argv: string[]): number {
   if (result.scripts.length) {
     console.log(`  scripts/ refreshed: ${result.scripts.join(', ')}`);
   }
+  for (const m of result.migrationsMktg) {
+    console.log(
+      `  + migrations-mktg/${m}  (apply it: npx wrangler d1 migrations apply <slug>-mktg --remote)`,
+    );
+  }
   for (const m of result.migrations) {
     console.log(`  + migrations/${m}  (apply it: npx wrangler d1 migrations apply <DB> --remote)`);
   }
@@ -326,4 +342,13 @@ export function run(argv: string[]): number {
     );
   }
   return 0;
+}
+
+/** Whether webmonterey.json switches marketing on. A missing or unreadable file is off. */
+function marketingOn(siteRoot: string): boolean {
+  try {
+    return loadSiteFiles(siteRoot).site.features?.marketing === true;
+  } catch {
+    return false;
+  }
 }

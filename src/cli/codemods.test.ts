@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { codemodsBetween, CODEMODS, type Codemod } from './codemods.ts';
+import { codemodsAfter, codemodsBetween, CODEMODS, type Codemod } from './codemods.ts';
 
 const stub = (version: string): Codemod => ({ version, title: version, run: () => [] });
 const ALL = [stub('3.0.0'), stub('1.1.0'), stub('2.1.0'), stub('2.0.0')];
@@ -11,7 +11,7 @@ test('the shipped codemods are exactly the versions this release claims', () => 
   // reviews, and this line is where the review happens.
   assert.deepEqual(
     CODEMODS.map((c) => c.version),
-    [],
+    ['1.6.0'],
   );
 });
 
@@ -27,6 +27,14 @@ test('results are ordered by version, whatever order they were registered in', (
 
 test('an upgrade that skips majors runs every codemod in between', () => {
   assert.deepEqual(versions('1.0.0', '2.1.0'), ['1.1.0', '2.0.0', '2.1.0']);
+});
+
+test('codemodsAfter is everything above the version, whatever is installed', () => {
+  assert.deepEqual(
+    codemodsAfter('2.0.0', ALL).map((c) => c.version),
+    ['2.1.0', '3.0.0'],
+  );
+  assert.deepEqual(codemodsAfter('3.0.0', ALL), []);
 });
 
 test('no movement runs nothing', () => {

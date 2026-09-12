@@ -75,7 +75,7 @@ test('stagingEmail is the address passed in, and empty rather than invented when
 
 test('run_worker_first starts with the actions endpoint and carries its warning', () => {
   const w = files()['wrangler.jsonc']!;
-  assert.match(w, /"run_worker_first": \["\/_actions\/\*"\]/);
+  assert.match(w, /"run_worker_first": \["\/_actions\/\*", "\/_webm\/\*"\]/);
   assert.match(w, /BOTH SLASH FORMS/);
   assert.match(w, /Sec-Fetch-Dest/);
 });
@@ -98,13 +98,19 @@ test('timeZone defaults to a real IANA zone', () => {
 test('features are technical switches, and carry no plan or tier', () => {
   const site = json(files(), 'webmonterey.json');
   assert.deepEqual(Object.keys(site.features).sort(), [
+    'analytics',
     'compliance',
     'd1',
+    'marketing',
     'platform',
+    'queue',
     'turnstile',
   ]);
-  // The app namespace is reserved on every site from day one - off, folder fixed, path public.
-  assert.deepEqual(site.app, { enabled: false, path: 'webapp', label: 'Portal' });
+  assert.equal(
+    'app' in site,
+    false,
+    'no reserved app namespace since 1.6.0 - a site names its own',
+  );
 
   /*
    * Check the DATA, not the `//`-prefixed keys - those are inline documentation and one of them
@@ -243,4 +249,56 @@ test('a session in a client repo cannot edit the package: node_modules is denied
   assert.ok(deny.includes('Edit(**/node_modules/**)'));
   /* Claude Code checks Edit and Read rules only; a Write rule is ignored and warned about. */
   assert.ok(!deny.some((r) => r.startsWith('Write(')), 'no Write rule');
+});
+
+test('the prettier config names a plugin, so the plugin is a devDependency', () => {
+  /*
+   * .prettierrc.json listed prettier-plugin-astro and nothing installed it, so `npm run format`
+   * on every fresh site failed with "Cannot find package". Two sites added it by hand.
+   */
+  const f = files();
+  const dev = json(f, 'package.json').devDependencies;
+  assert.ok(dev.prettier, 'prettier itself');
+  assert.equal(typeof dev['prettier-plugin-astro'], 'string');
+});
+
+test('the scaffold writes the Worker entrypoint with the queue consumer, and the queue block commented', () => {
+  /*
+   * "main" always: crons and the consumer both need an export the adapter's generated entry has
+   * no room for. The queue CONFIG stays a comment until the queues exist - a binding to a queue
+   * that is not there fails the deploy, and the start skill is what creates them.
+   */
+  const f = files();
+  assert.match(f['wrangler.jsonc']!, /"main": "\.\/src\/worker\.ts"/);
+  assert.match(
+    f['wrangler.jsonc']!,
+    /\/\/ {3}"producers": \[\{ "binding": "QUEUE", "queue": "autire" \}\]/,
+  );
+  assert.match(f['wrangler.jsonc']!, /"dead_letter_queue": "autire-dlq"/);
+  assert.doesNotMatch(f['wrangler.jsonc']!, /^\s*"queues":/m, 'not live until the queues exist');
+  assert.match(f['src/worker.ts']!, /defineWorker\(\{ queue: formQueue\(\) \}\)/);
+  assert.equal(json(f, 'webmonterey.json').features.queue, false);
+});
+
+test('analytics is on from the scaffold: the dataset binding, the beacon route, the flag', () => {
+  /*
+   * Unlike D1 and the queue there is nothing to create - the dataset appears on first write - so
+   * the binding is live from day one and costs nothing until a form is submitted.
+   */
+  const f = files();
+  assert.match(
+    f['wrangler.jsonc']!,
+    /"analytics_engine_datasets": \[\{ "binding": "ANALYTICS", "dataset": "autire" \}\]/,
+  );
+  assert.match(f['wrangler.jsonc']!, /"run_worker_first": \["\/_actions\/\*", "\/_webm\/\*"\]/);
+  assert.equal(json(f, 'webmonterey.json').features.analytics, true);
+});
+
+test('marketing is documented in the scaffold and off: the secrets named, the database not created', () => {
+  const f = files();
+  assert.match(f['.dev.vars.example']!, /MAILGUN_MKTG_API_KEY_TEST=/);
+  assert.match(f['.dev.vars.example']!, /MAILGUN_WEBHOOK_SIGNING_KEY=/);
+  assert.match(f['wrangler.jsonc']!, /d1 create autire-mktg --binding=DB_MKTG/);
+  assert.doesNotMatch(f['wrangler.jsonc']!, /^\s*"binding": "DB_MKTG"/m);
+  assert.equal(json(f, 'webmonterey.json').features.marketing, false);
 });

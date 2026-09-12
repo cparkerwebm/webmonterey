@@ -33,8 +33,11 @@ inline formatting (`**bold**`, `_italic_`, `[text](/url)`) rendered and escaped.
 the copy says `{client}`.
 
 `cta` is the "Visit WebMonterey" button. Render it as a link in the site's outline button style,
-with `AGENCY_LINK_ATTRS` (from the same import) spread on: it leaves the site, and those are the
-attributes the intro link carries.
+with `AGENCY_CTA_ATTRS` (from the same import) spread on. It carries the `target` and `rel` the
+intro link has, plus a `data-webm-cta` marker the package styles: a 25px floor above the button,
+so it never sits on the paragraph whatever the site's own paragraph spacing is. **A layout
+written before 1.6.0 spreads `AGENCY_LINK_ATTRS` on the button; `webm upgrade` rewrites that, or
+swap the name by hand.**
 
 **The component carries no copy of its own.** Not a heading, not a caption, not a sentence. The
 words are the same on every site; when a client wants them changed, that is `copy.webmaster` in
@@ -59,7 +62,7 @@ site; replace the element names and classes with the document block's own.
  * other document pages. See /webm:webmaster.
  */
 import {
-  AGENCY_LINK_ATTRS,
+  AGENCY_CTA_ATTRS,
   type WebmasterPageProps,
 } from '@cparkerwebm/webmonterey/webmonterey/webmaster';
 
@@ -78,7 +81,7 @@ const { title, intro, body, cta } = Astro.props;
         <p set:html={intro} />
         {body.map((paragraph) => <p set:html={paragraph} />)}
         <p>
-          <a class="button button--outline" href={cta.href} {...AGENCY_LINK_ATTRS}>{cta.label}</a>
+          <a class="button button--outline" href={cta.href} {...AGENCY_CTA_ATTRS}>{cta.label}</a>
         </p>
       </div>
     </article>
@@ -94,7 +97,7 @@ it directly rather than copying its markup:
 
 ```astro
 ---
-import { AGENCY_LINK_ATTRS } from '@cparkerwebm/webmonterey/webmonterey/webmaster';
+import { AGENCY_CTA_ATTRS } from '@cparkerwebm/webmonterey/webmonterey/webmaster';
 import Doc from '../content/content-000001/content-000001.astro';
 const { title, intro, body, cta } = Astro.props;
 ---
@@ -102,7 +105,7 @@ const { title, intro, body, cta } = Astro.props;
 <Doc title={title}>
   <p set:html={intro} />
   {body.map((paragraph) => <p set:html={paragraph} />)}
-  <p><a class="button button--outline" href={cta.href} {...AGENCY_LINK_ATTRS}>{cta.label}</a></p>
+  <p><a class="button button--outline" href={cta.href} {...AGENCY_CTA_ATTRS}>{cta.label}</a></p>
 </Doc>
 ```
 
@@ -129,7 +132,7 @@ Then read `dist/client/webmaster/index.html`:
 - the first paragraph names this client and has one
   `<a href="https://webmonterey.com/?utm_source=client…" target="_blank" rel="noopener">`; the
   "Visit WebMonterey" button is the only other off-site link, to the same URL with the same
-  attributes
+  attributes plus `data-webm-cta`
 - `<title>`, `meta name="description"`, `og:image` (`/webmaster/og.png`) and the
   `application/ld+json` block are present and unchanged from before the export
 

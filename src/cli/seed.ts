@@ -127,7 +127,6 @@ export const SCAFFOLD_DIRS: readonly string[] = [
   'src/content/pages',
   'src/forms',
   'src/pages',
-  'src/pages/webapp',
   'src/scripts',
   'src/styles/custom',
 ];

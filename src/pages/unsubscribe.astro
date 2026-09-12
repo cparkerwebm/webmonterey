@@ -1,0 +1,24 @@
+---
+/*
+ * /unsubscribe?t=<token> - the link under every campaign. One click does it: no form, no
+ * confirmation, no login, which is what the email spec asks of an unsubscribe and what a person
+ * who wants out deserves. A repeat click is "you have been unsubscribed" again, not an error.
+ *
+ * The header unsubscribe mailbox providers show is Mailgun's own, and reaches the list through
+ * the webhook; this page is the branded link in the footer.
+ */
+import Base from '../layouts/base.astro';
+import Outcome from '../includes/webmonterey/marketing/Outcome.astro';
+import { copy } from '../includes/webmonterey/copy.ts';
+import { isToken, unsubscribe } from '../includes/webmonterey/marketing/index.ts';
+
+export const prerender = false;
+
+const token = Astro.url.searchParams.get('t');
+const result = isToken(token) ? await unsubscribe(token) : 'invalid';
+const outcome = result === 'invalid' ? copy.marketing.invalid : copy.marketing.unsubscribed;
+---
+
+<Base title={outcome.title} noindex structuredData={false}>
+  <Outcome outcome={outcome} />
+</Base>

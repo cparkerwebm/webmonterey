@@ -15,28 +15,20 @@
  * space on the page. Generation 2 used `z.looseObject({ type: z.string() })` until v1.3 purely
  * because there was no component to build a union from, and that version accepted any typo
  * silently - the block rendered as nothing, with only a console warning.
+ *
+ * The schema itself is in blocks.ts, which has no Astro import and is where it is tested.
  */
 import { defineCollection } from 'astro:content';
 import { glob } from 'astro/loaders';
-import { z } from 'astro/zod';
+import { pageSchema, type BlockSchema } from './blocks.ts';
 
-/*
- * The option type for a discriminated union.
- *
- * DERIVED FROM THE FUNCTION, not imported. astro/zod is zod 4, where the option constraint is
- * `core.$ZodTypeDiscriminable` - an internal export that is not re-exported and would break on a
- * patch release. Zod 3's `ZodDiscriminatedUnionOption` no longer exists, so any snippet using it
- * is pre-v4 and wrong.
- */
-type BlockSchema = Parameters<typeof z.discriminatedUnion>[1][number];
+export type { BlockSchema } from './blocks.ts';
 
 /**
  * @param blockSchemas Every component's schema. Each must be an object schema with a literal
- *   `type` matching its folder ID. Zod needs at least one member for a discriminated union.
+ *   `type` matching its folder ID. Empty on a site with no component yet - see blockUnion.
  */
-export function webmontereyCollections(blockSchemas: readonly [BlockSchema, ...BlockSchema[]]) {
-  const blockSchema = z.discriminatedUnion('type', [...blockSchemas]);
-
+export function webmontereyCollections<const T extends readonly BlockSchema[]>(blockSchemas: T) {
   const pages = defineCollection({
     /*
      * One JSON file per page; the filename is the route.
@@ -46,20 +38,7 @@ export function webmontereyCollections(blockSchemas: readonly [BlockSchema, ...B
      * `home` is the only special case - see the router.
      */
     loader: glob({ base: './src/content/pages', pattern: '**/*.json' }),
-    schema: z.object({
-      /** Used for <title>, and rendered as the page's h1 unless `showTitle` is false. */
-      title: z.string(),
-      /*
-       * Defaults TRUE so a page is structurally complete by default: a page whose only headings
-       * are the h2s of its prose blocks has no h1 at all, which is a document-outline bug rather
-       * than a style preference. Set false on a page whose first block renders its own h1.
-       */
-      showTitle: z.boolean().default(true),
-      /** Meta description. Optional, but set it on any page that matters for search. */
-      description: z.string().optional(),
-      /** Ordered list of blocks. Each `type` must exist in the component registry. */
-      blocks: z.array(blockSchema).default([]),
-    }),
+    schema: pageSchema(blockSchemas),
   });
 
   return { pages };

@@ -16,7 +16,10 @@ const base = (over: Partial<CheckContext> = {}): CheckContext => ({
   includes: new Map(),
   emails: new Map(),
   migrations: new Map(),
+  migrationsMktg: new Map(),
   registry: null,
+  contentConfig: null,
+  devVarsExample: null,
   present: {},
   placeholders: [],
   sync: { version: '1.0.0', skills: ['launch'] },
@@ -417,6 +420,20 @@ test('a site that replaced the artwork passes', () => {
   assert.equal(runCheck('placeholder-branding', base()).status, 'pass');
 });
 
+test("the agency's own launched site passes with the seed in place - the seed is its mark", () => {
+  const placeholders = ['public/favicon.svg', 'public/opengraph.png'];
+  const launched = '2026-03-01';
+  const agency = base({
+    site: { client: 'WebMonterey', domain: 'webmonterey.com', launched },
+    placeholders,
+  });
+  assert.equal(runCheck('placeholder-branding', agency).status, 'pass');
+
+  /* The same context on any other domain is still the fault it always was. */
+  const client = base({ site: { client: 'Acme', domain: 'acme.com', launched }, placeholders });
+  assert.equal(runCheck('placeholder-branding', client).status, 'fail');
+});
+
 test('a registry keyed by name rather than by number is understood', () => {
   /*
    * Most of the fleet numbers its components; autire names them "hero.standard", "article.feed".
@@ -622,53 +639,6 @@ test('d1-binding stays quiet when the site does not use D1', () => {
   assert.equal(r.status, 'pass');
 });
 
-test('an enabled app with a custom path needs the PUBLIC path in run_worker_first', () => {
-  const site = { client: 'A', domain: 'a.com', app: { enabled: true, path: 'portal' } };
-  const pages = new Map([['src/pages/webapp/dashboard.astro', 'export const prerender = false;']]);
-
-  const bad = base({ site, pages, wrangler: { assets: { run_worker_first: ['/_actions/*'] } } });
-  const r = runCheck('app-namespace', bad);
-  assert.equal(r.status, 'fail');
-  assert.match(r.detail!, /\/portal\/\*/);
-  /* And the generic route check asks for the public route, not the folder route. */
-  assert.match(runCheck('run-worker-first', bad).detail!, /\/portal\/dashboard/);
-
-  const good = base({
-    site,
-    pages,
-    wrangler: { assets: { run_worker_first: ['/_actions/*', '/portal/*', '/portal', '/portal/'] } },
-  });
-  assert.equal(runCheck('app-namespace', good).status, 'pass');
-  assert.equal(runCheck('run-worker-first', good).status, 'pass');
-});
-
-test('a page JSON named like the app path is a collision, and a prerendered app page is a fault', () => {
-  const r = runCheck(
-    'app-namespace',
-    base({
-      site: { client: 'A', domain: 'a.com', app: { enabled: true, path: 'portal' } },
-      contentPages: ['home', 'portal'],
-      pages: new Map([['src/pages/webapp/index.astro', '<h1>static</h1>']]),
-      wrangler: {
-        assets: { run_worker_first: ['/_actions/*', '/portal/*', '/portal', '/portal/'] },
-      },
-    }),
-  );
-  assert.equal(r.status, 'fail');
-  assert.match(r.detail!, /collides/);
-  assert.match(r.detail!, /prerender = false/);
-});
-
-test('app routes with the app switched off only warn, and no routes is silence', () => {
-  assert.equal(runCheck('app-namespace', base()).status, 'pass');
-  const r = runCheck(
-    'app-namespace',
-    base({ pages: new Map([['src/pages/webapp/x.astro', 'export const prerender = false;']]) }),
-  );
-  assert.equal(r.status, 'warn');
-  assert.match(r.detail!, /app\.enabled/);
-});
-
 test('a staging site with no stagingEmail FAILS - every send would throw', () => {
   const r = runCheck(
     'staging-email',
@@ -769,4 +739,245 @@ test('a launched site still declared staging fails, and the message names the se
   assert.equal(r.status, 'fail');
   assert.match(r.detail!, /noindex/);
   assert.match(r.detail!, /out of search/);
+});
+
+test('a D1 binding named after the database, not DB, is told what to rename', () => {
+  /*
+   * `wrangler d1 create <slug> --update-config` without --binding prompts for a binding name and,
+   * in a session with no terminal, defaults it to the database name. The site then fails this
+   * check until someone renames it by hand - so the message names the rename.
+   */
+  const r = runCheck(
+    'd1-binding',
+    base({
+      site: { client: 'Acme', domain: 'acme.com', features: { d1: true } },
+      wrangler: { d1_databases: [{ binding: 'acme', database_name: 'acme', database_id: 'x' }] },
+    }),
+  );
+  assert.equal(r.status, 'fail');
+  assert.match(r.detail!, /"acme"/);
+  assert.match(r.detail!, /Rename the binding to DB/);
+  assert.match(r.detail!, /--binding=DB/);
+});
+
+test('a component in the registry but not the union, or the reverse, is a warning naming it', () => {
+  const contentConfig =
+    `import { webmontereyCollections } from '@cparkerwebm/webmonterey/content';\n` +
+    `import { schema as hero } from './components/content/content-000001/schema.ts';\n` +
+    `import { schema as faq } from './components/content/content-000010/schema.ts';\n` +
+    `export const collections = webmontereyCollections([hero, faq]);\n`;
+  const registry = `export const blocks = { 'content-000001': A, 'region-000001': R };`;
+  const r = runCheck('union-matches-registry', base({ contentConfig, registry }));
+  assert.equal(r.status, 'warn');
+  assert.match(r.detail!, /not in the union[^;]*region-000001/);
+  assert.match(r.detail!, /not in src\/components\/registry\.ts: content-000010/);
+});
+
+test('a union and registry that agree pass, whatever the local names; empty and empty pass', () => {
+  const contentConfig =
+    `import { schema as whateverIWant } from './components/content/content-000001/schema.ts';\n` +
+    `export const collections = webmontereyCollections([whateverIWant]);\n`;
+  const registry = `export const blocks = { 'content-000001': A };`;
+  assert.equal(
+    runCheck('union-matches-registry', base({ contentConfig, registry })).status,
+    'pass',
+  );
+  assert.equal(
+    runCheck(
+      'union-matches-registry',
+      base({
+        contentConfig: `export const collections = webmontereyCollections([]);\n`,
+        registry: `export const blocks = {};`,
+      }),
+    ).status,
+    'pass',
+    'a fresh scaffold',
+  );
+  assert.equal(runCheck('union-matches-registry', base()).status, 'pass');
+});
+
+test('a mode-read secret read with plain getBinding elsewhere, or listed without its twin, warns', () => {
+  const includes = new Map([
+    ['src/includes/pay.ts', `const k = getBindingForMode<string>('STRIPE_SECRET_KEY', host);`],
+  ]);
+  const actions = new Map([['src/actions/index.ts', `getBinding<string>('STRIPE_SECRET_KEY')`]]);
+  const r = runCheck('binding-modes', base({ includes, actions }));
+  assert.equal(r.status, 'warn');
+  assert.match(
+    r.detail!,
+    /STRIPE_SECRET_KEY is read with plain getBinding in src\/actions\/index\.ts/,
+  );
+
+  const twinless = runCheck(
+    'binding-modes',
+    base({ includes, devVarsExample: `# STRIPE_SECRET_KEY=\n# MAILGUN_API_KEY=\n` }),
+  );
+  assert.equal(twinless.status, 'warn');
+  assert.match(twinless.detail!, /lists STRIPE_SECRET_KEY but not STRIPE_SECRET_KEY_TEST/);
+});
+
+test('a consistent mode-read secret passes, and a site using no mode helper is silent', () => {
+  const includes = new Map([
+    ['src/includes/pay.ts', `getBindingForMode<string>('STRIPE_SECRET_KEY', host)`],
+  ]);
+  const ok = base({
+    includes,
+    devVarsExample: `# STRIPE_SECRET_KEY=\n# STRIPE_SECRET_KEY_TEST=\n`,
+    actions: new Map([['src/actions/index.ts', `getBinding<string>('TURNSTILE_SECRET_KEY')`]]),
+  });
+  assert.equal(runCheck('binding-modes', ok).status, 'pass');
+  assert.equal(runCheck('binding-modes', base()).status, 'pass');
+});
+
+test('features.queue needs a producer bound as QUEUE, a consumer for the same queue, and a handler', () => {
+  const site = { client: 'Acme', domain: 'acme.com', features: { queue: true } };
+  const entry = `import { defineWorker } from '@cparkerwebm/webmonterey/worker';
+import { formQueue } from '@cparkerwebm/webmonterey/cloudflare/queues';
+export default defineWorker({ queue: formQueue() });`;
+
+  const none = runCheck('queue-binding', base({ site, wrangler: {} }));
+  assert.equal(none.status, 'fail');
+  assert.match(none.detail!, /no queues\.producers entry binding QUEUE/);
+
+  const noConsumer = runCheck(
+    'queue-binding',
+    base({ site, wrangler: { queues: { producers: [{ binding: 'QUEUE', queue: 'acme' }] } } }),
+  );
+  assert.equal(noConsumer.status, 'fail');
+  assert.match(noConsumer.detail!, /no consumer/);
+
+  const wrangler = {
+    main: './src/worker.ts',
+    queues: {
+      producers: [{ binding: 'QUEUE', queue: 'acme' }],
+      consumers: [{ queue: 'acme', dead_letter_queue: 'acme-dlq' }],
+    },
+  };
+  const noHandler = runCheck(
+    'queue-binding',
+    base({ site, wrangler, workerEntry: `export default defineWorker({});` }),
+  );
+  assert.equal(noHandler.status, 'fail');
+  assert.match(noHandler.detail!, /exports no queue\(\) handler/);
+
+  assert.equal(
+    runCheck('queue-binding', base({ site, wrangler, workerEntry: entry })).status,
+    'pass',
+  );
+
+  const noDlq = runCheck(
+    'queue-binding',
+    base({
+      site,
+      workerEntry: entry,
+      wrangler: { ...wrangler, queues: { ...wrangler.queues, consumers: [{ queue: 'acme' }] } },
+    }),
+  );
+  assert.equal(noDlq.status, 'warn');
+  assert.match(noDlq.detail!, /dead_letter_queue/);
+});
+
+test('with features.queue off the queue check is silent, whatever wrangler says', () => {
+  assert.equal(runCheck('queue-binding', base({ wrangler: {} })).status, 'pass');
+});
+
+test('features.analytics needs the ANALYTICS binding and the beacon route in run_worker_first', () => {
+  const site = { client: 'Acme', domain: 'acme.com', features: { analytics: true } };
+  const unbound = runCheck(
+    'analytics-binding',
+    base({ site, wrangler: { assets: { run_worker_first: ['/_actions/*', '/_webm/*'] } } }),
+  );
+  assert.equal(unbound.status, 'fail');
+  assert.match(unbound.detail!, /binding ANALYTICS/);
+
+  const datasets = [{ binding: 'ANALYTICS', dataset: 'acme' }];
+  const unrouted = runCheck(
+    'analytics-binding',
+    base({
+      site,
+      wrangler: {
+        analytics_engine_datasets: datasets,
+        assets: { run_worker_first: ['/_actions/*'] },
+      },
+    }),
+  );
+  assert.equal(unrouted.status, 'fail');
+  assert.match(unrouted.detail!, /\/_webm\/\*/);
+
+  const ok = base({
+    site,
+    wrangler: {
+      analytics_engine_datasets: datasets,
+      assets: { run_worker_first: ['/_actions/*', '/_webm/*'] },
+    },
+  });
+  assert.equal(runCheck('analytics-binding', ok).status, 'pass');
+});
+
+test('a bound dataset with the feature off is a warning, and neither is silence', () => {
+  const bound = runCheck(
+    'analytics-binding',
+    base({ wrangler: { analytics_engine_datasets: [{ binding: 'ANALYTICS', dataset: 'acme' }] } }),
+  );
+  assert.equal(bound.status, 'warn');
+  assert.equal(runCheck('analytics-binding', base()).status, 'pass');
+});
+
+test('features.marketing needs DB_MKTG with its own migrations folder, the routes, and the secrets named', () => {
+  const site = { client: 'Acme', domain: 'acme.com', features: { marketing: true } };
+  const bare = runCheck('mktg-binding', base({ site, wrangler: {} }));
+  assert.equal(bare.status, 'fail');
+  assert.match(bare.detail!, /binds DB_MKTG/);
+  assert.match(bare.detail!, /migrations-mktg\/ is empty/);
+  assert.match(bare.detail!, /\/subscribe\/confirm/);
+
+  const wrangler = {
+    assets: {
+      run_worker_first: [
+        '/_actions/*',
+        '/_webm/*',
+        '/subscribe/*',
+        '/unsubscribe',
+        '/unsubscribe/',
+      ],
+    },
+    d1_databases: [
+      { binding: 'DB', database_id: 'a' },
+      { binding: 'DB_MKTG', database_id: 'b', migrations_dir: 'migrations-mktg' },
+    ],
+  };
+  const migrationsMktg = new Map([
+    ['migrations-mktg/0001.sql', 'CREATE TABLE IF NOT EXISTS subscribers (id INTEGER);'],
+  ]);
+  const devVarsExample =
+    '# MAILGUN_MKTG_API_KEY=\n# MAILGUN_MKTG_DOMAIN=\n# MAILGUN_WEBHOOK_SIGNING_KEY=\n';
+  assert.equal(
+    runCheck('mktg-binding', base({ site, wrangler, migrationsMktg, devVarsExample })).status,
+    'pass',
+  );
+
+  const wrongDir = runCheck(
+    'mktg-binding',
+    base({
+      site,
+      migrationsMktg,
+      devVarsExample,
+      wrangler: { ...wrangler, d1_databases: [{ binding: 'DB_MKTG', database_id: 'b' }] },
+    }),
+  );
+  assert.equal(wrongDir.status, 'fail');
+  assert.match(wrongDir.detail!, /migrations_dir/);
+
+  const unnamed = runCheck(
+    'mktg-binding',
+    base({ site, wrangler, migrationsMktg, devVarsExample: '# MAILGUN_API_KEY=\n' }),
+  );
+  assert.match(
+    unnamed.detail!,
+    /does not name MAILGUN_MKTG_API_KEY, MAILGUN_MKTG_DOMAIN, MAILGUN_WEBHOOK_SIGNING_KEY/,
+  );
+});
+
+test('with features.marketing off the marketing check is silent', () => {
+  assert.equal(runCheck('mktg-binding', base({ wrangler: {} })).status, 'pass');
 });

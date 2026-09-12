@@ -30,10 +30,13 @@ import {
   displayName,
   shortName,
   brandTitles,
+  features,
   gtmId as siteGtmId,
 } from '../includes/webmonterey/site.ts';
 import { header, footer, panels, structuredData } from 'virtual:webm/registry';
 import measuredShareImage from 'virtual:webm/share-image';
+
+const DEFAULT_SHARE_IMAGE = '/opengraph.png';
 import icons from 'virtual:webm/icons';
 import build from 'virtual:webm/build';
 
@@ -110,7 +113,8 @@ interface Props {
   /*
    * Dimensions of `shareImage`, in pixels. THEY MUST TRAVEL WITH IT.
    *
-   * These default to the size of the shipped `public/opengraph.png`. Files in public/ are
+   * These default to the measured size of the shipped `public/opengraph.png`, and ONLY when
+   * `shareImage` is that file. Files in public/ are
    * copied verbatim and never processed, so nothing can measure the real image at build time
    * and nothing will warn when these stop matching — a client dropping in a differently sized
    * card image silently publishes false dimensions. Found exactly that way: a live site
@@ -166,21 +170,29 @@ const {
   description,
   brandTitle = brandTitles,
   noindex: noindexProp = false,
-  shareImage = '/opengraph.png',
-  /*
-   * MEASURED, not assumed. Both default to the real size of public/opengraph.png, read from the
-   * file's own header at build time - so replacing the card art cannot leave the tags describing
-   * the old one, which is what happened on every generation-2 site.
-   *
-   * A page passing explicit values still wins, and an unreadable file leaves both null, which
-   * omits the tags rather than publishing a guess.
-   */
-  shareImageWidth = measuredShareImage?.width ?? null,
-  shareImageHeight = measuredShareImage?.height ?? null,
+  shareImage = DEFAULT_SHARE_IMAGE,
+  shareImageWidth: shareImageWidthProp,
+  shareImageHeight: shareImageHeightProp,
   analytics = true,
   structuredData: renderStructuredData = true,
   scrollTop = true,
 } = Astro.props;
+
+/*
+ * MEASURED, not assumed - and ONLY FOR THE DEFAULT CARD. The size of public/opengraph.png is read
+ * from the file's own header at build time, so replacing the card art cannot leave the tags
+ * describing the old one, which is what happened on every generation-2 site. A page naming a
+ * DIFFERENT image gets no measured size: stamping the default card's dimensions on another file
+ * is the false-dimensions bug the measuring was added to prevent, from the other side. That page
+ * passes its own size or ships no size tags, and the scrapers measure the image themselves.
+ *
+ * A page passing explicit values always wins, null included - null omits the tags on purpose.
+ */
+const measured = shareImage === DEFAULT_SHARE_IMAGE ? measuredShareImage : null;
+const shareImageWidth =
+  shareImageWidthProp !== undefined ? shareImageWidthProp : (measured?.width ?? null);
+const shareImageHeight =
+  shareImageHeightProp !== undefined ? shareImageHeightProp : (measured?.height ?? null);
 
 /*
  * A PREVIEW BUILD IS NOINDEX, EVERY PAGE. A preview is a staging site (`environment` in
@@ -195,6 +207,13 @@ const {
  */
 const noindex = noindexProp || build.preview;
 const analyticsOn = analytics && !build.preview;
+
+/*
+ * The page-view beacon, as a string: a <script> inside a JSX expression cannot carry braces, so
+ * it is written through set:html. One line, no cookie, no identifier - see the render below.
+ */
+const BEACON =
+  "navigator.sendBeacon&&navigator.sendBeacon('/_webm/beacon',JSON.stringify({p:location.pathname,r:document.referrer}));";
 
 /*
  * Canonical URL. Only emitted once `site` is derived from `domain` in webmonterey.json.
@@ -401,6 +420,17 @@ const StructuredData = structuredData;
 
     {scrollTop && <ScrollTop />}
     {analytics && <CookieConsent />}
+
+    {
+      /*
+      THE PAGE-VIEW BEACON. One line, inline, on a production page of a site that writes
+      analytics: the pathname and the referrer, posted to the package's endpoint, which keeps
+      only the path and the referrer's HOST. No cookie, no identifier, nothing stored on the
+      device - which is why it is not behind the consent banner, and why it stays off on a
+      preview and on a page rendered with analytics={false}, the same gates as GTM.
+    */
+    }
+    {analyticsOn && features?.analytics && <script is:inline set:html={BEACON} />}
 
     {
       /*

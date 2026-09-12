@@ -10,7 +10,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { codemodsBetween } from './codemods.ts';
+import { codemodsAfter, codemodsBetween } from './codemods.ts';
 import { sync } from './sync.ts';
 import { packageName } from './package-root.ts';
 
@@ -34,6 +34,27 @@ export function run(argv: string[]): number {
   if (!existsSync(join(siteRoot, 'webmonterey.json'))) {
     console.error(`webm upgrade: no webmonterey.json here. Not a WebMonterey site.`);
     return 1;
+  }
+
+  /*
+   * --codemods-from <version>: run the codemods and the sync against the INSTALLED version, with
+   * no install, no branch, and no clean-tree guard - it is a targeted rerun someone asked for, and its
+   * changes are reviewed the way any edit is. For a site whose package.json was bumped by hand, and for the
+   * end-to-end test, which lays a site out the old way and runs the upgrade path over it.
+   */
+  const codemodsFrom = argv[argv.indexOf('--codemods-from') + 1];
+  if (argv.includes('--codemods-from')) {
+    const installed = installedVersion(siteRoot);
+    if (!codemodsFrom || !installed) {
+      console.error(
+        'webm upgrade --codemods-from <version>: needs a version, and an installed package.',
+      );
+      return 1;
+    }
+    console.log(`Installed: ${installed}. Running the codemods since ${codemodsFrom}.`);
+    runMods(siteRoot, codemodsAfter(codemodsFrom));
+    resync(siteRoot);
+    return 0;
   }
 
   /*
@@ -65,21 +86,8 @@ export function run(argv: string[]): number {
     return 1;
   }
 
-  const mods = codemodsBetween(from ?? '0.0.0', to);
-  if (mods.length) {
-    console.log(`\nRunning ${mods.length} codemod${mods.length === 1 ? '' : 's'}:`);
-    for (const mod of mods) {
-      const changes = mod.run(siteRoot);
-      console.log(`  ${mod.version} ${mod.title}`);
-      for (const c of changes) console.log(`      ${c}`);
-      if (!changes.length) console.log(`      nothing to change`);
-    }
-  }
-
-  const synced = sync(siteRoot);
-  console.log(`\nSkills re-materialized (v${synced.version})`);
-  for (const s of synced.added) console.log(`  + /webm:${s}`);
-  for (const s of synced.removed) console.log(`  - /webm:${s}`);
+  runCodemods(siteRoot, from ?? '0.0.0', to);
+  const synced = resync(siteRoot);
 
   console.log(`\nNow, in order:`);
   console.log(`  npx webm doctor`);
@@ -90,4 +98,27 @@ export function run(argv: string[]): number {
     console.log(`skills/ changed - agents, hooks and .mcp.json are not picked up live.`);
   }
   return 0;
+}
+
+function runCodemods(siteRoot: string, from: string, to: string): void {
+  runMods(siteRoot, codemodsBetween(from, to));
+}
+
+function runMods(siteRoot: string, mods: ReturnType<typeof codemodsBetween>): void {
+  if (!mods.length) return;
+  console.log(`\nRunning ${mods.length} codemod${mods.length === 1 ? '' : 's'}:`);
+  for (const mod of mods) {
+    const changes = mod.run(siteRoot);
+    console.log(`  ${mod.version} ${mod.title}`);
+    for (const c of changes) console.log(`      ${c}`);
+    if (!changes.length) console.log(`      nothing to change`);
+  }
+}
+
+function resync(siteRoot: string): ReturnType<typeof sync> {
+  const synced = sync(siteRoot);
+  console.log(`\nSkills re-materialized (v${synced.version})`);
+  for (const s of synced.added) console.log(`  + /webm:${s}`);
+  for (const s of synced.removed) console.log(`  - /webm:${s}`);
+  return synced;
 }

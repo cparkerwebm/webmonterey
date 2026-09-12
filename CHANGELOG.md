@@ -11,6 +11,142 @@ build. See `/webm:upgrade`.
 
 ---
 
+## 1.6.0 — 2026-09-12
+
+A release about what happens after the visitor has their page: mail through a queue, events
+into analytics, a marketing list the client owns. Nothing in it is on for an existing site until
+the site switches it on; a plain `npm update` changes the two things named under **Changed** and
+nothing else. `npx webm upgrade` runs the one codemod, syncs the skills and checks the wiring.
+
+### Added
+
+- **Mail leaves through the site's Cloudflare Queue.** The visitor never needed the notification
+  or the autoresponse to continue, so with `features.queue` on the action hands two messages to
+  the queue and answers; the consumer retries a failed notification with a delay until
+  `max_retries` moves it to the dead-letter queue, where a person can see it, and never retries
+  the autoresponse, which was already the rule. Two messages, not one, so the second rule does not
+  break the first. **Inline is the fallback and stays tested:** the flag off, the binding missing,
+  a message over the limit or `send()` throwing all send in the request exactly as before,
+  through the same two functions in `forms/deliver.ts`. Every scaffold now writes
+  `src/worker.ts` - `defineWorker({ queue: formQueue() })` - and sets `main`, so a cron is one
+  more handler in a file that exists; the queue config sits commented in `wrangler.jsonc` until
+  `/webm:start` creates the two queues (`<slug>`, `<slug>-dlq`). A site adds its own kinds - a
+  CRM add, a Slack post - as handlers by kind on the same consumer. `webm doctor` gains
+  `queue-binding`. `@cparkerwebm/webmonterey/cloudflare/queues`.
+
+- **Analytics Engine.** Every site with `features.analytics` writes to a Workers Analytics Engine
+  dataset named for its slug through the `ANALYTICS` binding: the form pipeline's events and a
+  page-view count from a one-line beacon on each production page, because prerendered pages never
+  reach the Worker. Cookieless and aggregate - no identifier, cookie, IP, user agent, full referrer
+  or query string is ever written - so it runs without consent, and it still stays off on previews
+  and on pages rendered with `analytics={false}`. The dataset appears on first write, so the
+  scaffold ships the binding and the flag ON; an existing site adds the binding, `/_webm/*` to
+  `run_worker_first`, and the flag. The column contract is in `analytics/datapoint.ts` and is
+  fleet-wide: the platform's queries depend on it. Reads stay in the platform. `webm doctor` gains
+  `analytics-binding`. `@cparkerwebm/webmonterey/cloudflare/analytics`.
+
+- **Marketing mail, for the select sites that have it.** Behind `features.marketing`: the
+  subscriber list is a table in the site's SECOND D1 database, `<slug>-mktg`, bound as `DB_MKTG`
+  with its own `migrations-mktg/` folder - the client owns their subscribers, a segment is a WHERE
+  clause, and Mailgun only sends, through a domain sending key for `mktg.<domain>`
+  (`MAILGUN_MKTG_API_KEY`, `MAILGUN_MKTG_DOMAIN`, with `_TEST` twins). Confirmed opt-in always:
+  a form with a `subscribe` block writes a pending row and sends a confirmation from the
+  transactional domain, and nothing is sent until its link is clicked. Provenance on every row.
+  Two injected pages, `/subscribe/confirm` and `/unsubscribe`, one click each, laid out by the
+  site through a `marketingPage` registry seam; a webhook at `/_webm/mailgun` that applies
+  Mailgun's unsubscribed, complained and permanent-failed events to the row (verified with
+  `MAILGUN_WEBHOOK_SIGNING_KEY` before it is read); and `sendCampaign`, batches of 1,000 through
+  recipient variables, each batch a queue message retried alone and idempotent. Composition is the
+  site's. `/webm:launch` has the section; `webm sync` seeds `migrations-mktg/` once the flag is
+  on; `webm doctor` gains `mktg-binding`. `@cparkerwebm/webmonterey/webmonterey/marketing`.
+
+- **Secrets with a live value and a test value.** One convention, package-wide: `<NAME>` and
+  `<NAME>_TEST`, suffix at the end so the pair sorts together, for any service with a sandbox
+  flavour - never a `_TEST_` infix, never a scheme per service. `getBindingForMode(name,
+  hostname)` and `hasBindingForMode` read the `_TEST` value on a staging deployment
+  (`environment` staging, or any workers.dev host) and the live one otherwise, by the rule mail
+  already uses, so nothing flips at launch and local dev keeps test keys in `.dev.vars`. A secret
+  with one value is plain `getBinding`, unchanged. `webm doctor` gains `binding-modes`, warning
+  on a name read both ways or listed in `.dev.vars.example` without its twin. Nothing
+  service-specific ships; the first site to need it had a Stripe version in a file of its own,
+  which is now two calls.
+
+- **`appearance` on the Turnstile component.** `always` (the default, unchanged markup),
+  `interaction-only` for an inline single-field form where nothing should show unless a
+  challenge is needed, `execute` for visible-once-it-starts. `interaction-only` also drops the
+  reserved widget height. One site set `data-appearance` itself with an inline script after the
+  component, racing Turnstile's loader; it can pass the prop.
+
+- **`noindex`, `shareImage`, `shareImageWidth` and `shareImageHeight` are page schema fields.**
+  The router read the first two defensively and zod stripped them, so a site that set them in
+  JSON lost them, and one site forked the whole schema for exactly that. Declared, forwarded
+  plainly, and **a site that forked the schema for these can delete the fork.**
+
+- **`webm doctor`: `union-matches-registry`.** A component in the registry but not the union
+  passed to `webmontereyCollections`, or the reverse, is a warning naming it - the third step of
+  adding a component is the one that gets forgotten, and each half fails differently.
+
+- **A "1.5-shaped" site in the end-to-end test.** The scaffold is laid out the 1.5.0 way - the old
+  button constant, an `app` key - and the upgrade path is run against it: codemod, sync, doctor,
+  build. The upgrade is exercised on every release from here on.
+
+### Changed
+
+- **The `/webmaster` copy.** "This {client} custom website was **built and managed** by
+  WebMonterey…" - _designed_ dropped - and "WebMonterey handles **our web hosting, domain and
+  ongoing maintenance of our site**." A site overriding `copy.webmaster` is unaffected.
+
+- **The `/webmaster` button keeps 25px above the paragraph, on every layout.** `AGENCY_CTA_ATTRS`
+  - the link attributes plus a `data-webm-cta` marker the page styles - replaces
+  `AGENCY_LINK_ATTRS` on the button; the intro link keeps the plain constant. On one site the
+  button sat almost touching the copy because the site's own paragraph spacing was a few pixels.
+  **The 1.6.0 codemod rewrites the spread in a site's own webmaster layout**; `/webm:webmaster`
+  shows the new constant.
+
+- **The measured share-image size applies only to the default card.** A page naming another
+  `shareImage` got `public/opengraph.png`'s dimensions stamped on it - the false-dimensions bug
+  the measuring was added to prevent, from the other side. Now such a page passes its own size or
+  ships no size tags, and the scrapers measure the image themselves.
+
+- **`webmontereyCollections` keeps each block's fields, and accepts an empty array.** Typed as a
+  plain array of options it inferred every block as `unknown`, so a site component reading a
+  block off the collection failed `astro check`; and the one-member minimum failed
+  `astro check` on every fresh scaffold - Workers Builds runs `npm run build`, so the FIRST push
+  of every new site failed. Generic over the tuple now, `z.never()` when empty, the schema in a
+  pure `blocks.ts` with a type-level test, and **the end-to-end test runs the site's own
+  `npm run build`** rather than `astro build`, which is how this was missed. A site that
+  re-parsed blocks through its own schema to get types can stop.
+
+- **`webm new` installs `prettier-plugin-astro`.** The scaffolded prettier config named it and
+  nothing installed it, so `npm run format` failed on every fresh site.
+
+- **`placeholder-branding` passes on webmonterey.com.** The seed IS the agency's mark, so the
+  agency's own site is identical by right; a doctor that failed that repo forever was one people
+  learned to skip. The same domain check the credit check uses.
+
+- **`/webm:start` creates D1 with `--binding=DB`.** Without it wrangler prompts and, in a session
+  with no terminal, names the binding after the database; the site then failed `d1-binding` until
+  it was renamed by hand. The check now says what to rename, and the skill runs `npm run format`
+  after, because `--update-config` rewrites the file with tabs.
+
+### Removed
+
+- **The reserved `/webapp` namespace.** The fixed folder, the `app` key, the injected rewrite
+  middleware and the `app-namespace` check are gone. Building a real app on it showed the rewrite
+  fighting Astro's form actions, and the site that did grow an app named the folder `portal` and
+  wired it directly, which worked first time. A site that grows an app names the folder what the
+  URL is, gives its pages `prerender = false`, lists the path in `run_worker_first` and passes
+  it to `noindexRoutes`; the generic checks cover all three. **An existing site is untouched:** an
+  `app` key left in `webmonterey.json` is no longer read, and no codemod deletes anything.
+
+### For every site
+
+1. `npx webm upgrade`. The codemod touches only a site-owned webmaster layout.
+2. Nothing else is required. To take the new capabilities: `/webm:start` step 4 for the queue,
+   the analytics binding and `/_webm/*` for analytics, `/webm:launch` 10b for marketing.
+
+---
+
 ## 1.5.0 — 2026-09-06
 
 ### Added

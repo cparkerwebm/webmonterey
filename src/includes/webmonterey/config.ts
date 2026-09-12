@@ -21,6 +21,20 @@ export interface SiteFeatures {
   d1?: boolean;
   turnstile?: boolean;
   /**
+   * Notification and autoresponse mail go through the site's Cloudflare Queue rather than in the
+   * request. Off until the queues exist - the start skill creates them and switches this on.
+   * With it off, or the binding missing, or a message the queue refuses, the action sends inline
+   * exactly as it did before 1.6.0.
+   */
+  queue?: boolean;
+  /** Form events and a cookieless page-view beacon written to Workers Analytics Engine. */
+  analytics?: boolean;
+  /**
+   * Marketing mail: a subscriber list in the site's own second D1 database, campaigns sent
+   * through a Mailgun sending key on `mktg.<domain>`. Offered to select clients; off by default.
+   */
+  marketing?: boolean;
+  /**
    * RESERVED, and inert today. Will route transactional mail through the platform rather than a
    * site-held Mailgun key once the relay exists. Declared now so switching it on later is a
    * config edit rather than a codemod.
@@ -193,31 +207,8 @@ export interface SiteConfig {
 
   organization?: Organization;
   features?: SiteFeatures;
-
-  /**
-   * THE WEB APP NAMESPACE, reserved on every site whether or not it ever grows one.
-   *
-   * A URL namespace is the one thing that is expensive to retrofit: once a site has real pages,
-   * carving out `/portal` later means checking every existing URL for a collision. Reserving it
-   * costs one field and an empty folder, so every site has it from day one.
-   *
-   * The DIRECTORY is fixed: src/pages/webapp/, on every site, always. `path` is the PUBLIC url
-   * segment. It defaults to the folder name so the common case needs no rewrite; a client whose
-   * customers log in sets `portal`, `members` or `account`, and the integration rewrites
-   * `/<path>/*` onto the folder. Everything else - the noindex flag, the sitemap exclusion, the
-   * run_worker_first entries, the doctor checks - derives from this one field.
-   *
-   * Every page under the folder must be `prerender = false`: the app needs bindings, and a
-   * rewrite can only reach a route the Worker renders. `webm doctor` checks.
-   *
-   * What is NOT reserved: auth, sessions, user tables. Those get built for the first client who
-   * needs them, in that client's repo, and promoted here only when a second one does.
-   */
-  app?: { enabled?: boolean; path?: string; label?: string };
 }
 
-/** The app folder under src/pages/. Fixed on every site; only the public path varies. */
-export const APP_DIR = 'webapp';
 export const DEFAULT_TIME_ZONE = 'America/Los_Angeles';
 
 /**
@@ -291,37 +282,6 @@ export function isValidTimeZone(zone: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** Whether the site has switched its web app on. Off is the scaffold's state. */
-export function appEnabled(config: Pick<SiteConfig, 'app'>): boolean {
-  return config.app?.enabled === true;
-}
-
-/**
- * The public url segment for the app, normalized without slashes. Falls back to the folder name
- * so an empty or all-slash value cannot produce a route of `/`.
- */
-export function resolveAppPath(config: Pick<SiteConfig, 'app'>): string {
-  const raw = (config.app?.path ?? APP_DIR).replace(/^\/+|\/+$/g, '');
-  return raw || APP_DIR;
-}
-
-/**
- * Every path that must appear in wrangler.jsonc's `assets.run_worker_first`.
- *
- * BOTH SLASH FORMS, always. The asset router treats `/portal/` and `/portal` as different paths,
- * and a missing entry produces a route that returns 200 to curl and a 404 page to Chrome -
- * because the interception keys off `Sec-Fetch-Dest: document`, which browsers send and curl does
- * not. The PUBLIC path, not the folder: the router sees the URL, the rewrite happens after.
- */
-export function workerFirstPaths(config: Pick<SiteConfig, 'app'>): string[] {
-  const paths = ['/_actions/*'];
-  if (appEnabled(config)) {
-    const app = resolveAppPath(config);
-    paths.push(`/${app}/*`, `/${app}`, `/${app}/`);
-  }
-  return paths;
 }
 
 /**

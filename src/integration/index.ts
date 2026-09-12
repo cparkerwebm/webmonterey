@@ -31,12 +31,7 @@ import { fileURLToPath } from 'node:url';
 import { compileToCss } from '../design/compile.ts';
 import { imageSize } from './image-size.ts';
 import { loadForms, loadSiteFiles, resolveSiteUrl, sitePage } from './config.ts';
-import {
-  APP_DIR,
-  appEnabled,
-  previewReason,
-  resolveAppPath,
-} from '../includes/webmonterey/config.ts';
+import { previewReason } from '../includes/webmonterey/config.ts';
 
 export interface WebmontereyOptions {
   /**
@@ -131,15 +126,12 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
         config,
         updateConfig,
         injectRoute,
-        addMiddleware,
         addWatchFile,
         logger,
       }) => {
         const root = config.root.pathname;
         const files = loadSiteFiles(root);
         const site = resolveSiteUrl(files.site);
-        const app = appEnabled(files.site);
-        const appPath = resolveAppPath(files.site);
 
         /*
          * PREVIEW OR PRODUCTION, decided in one place - previewReason - from two signals. A site
@@ -202,12 +194,8 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
           );
         }
 
-        /* The app is authenticated, so it is never in the sitemap. Its PUBLIC path, not the folder. */
-        const noindex = [
-          '/webm',
-          ...(app ? [`/${appPath}`] : []),
-          ...(options.noindexRoutes ?? []),
-        ];
+        /* A site keeps its own authenticated area out of the sitemap through noindexRoutes. */
+        const noindex = ['/webm', ...(options.noindexRoutes ?? [])];
 
         updateConfig({
           site,
@@ -411,6 +399,13 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
                          */
                         `export const webmasterPage = mod.webmasterPage ?? null;`,
                         /*
+                         * THE MARKETING PAGES' BODY - subscription confirmed, unsubscribed, link
+                         * invalid. Same seam as the webmaster page: the routes, the copy and the
+                         * outcomes stay the package's; a site hands over the layout of a title
+                         * and some paragraphs. Null is an <h1> and the paragraphs.
+                         */
+                        `export const marketingPage = mod.marketingPage ?? null;`,
+                        /*
                          * THE SITE'S JSON-LD, rendered into <head> on every route. The package
                          * emits none of its own: what a business claims about itself is the
                          * site's to say, and every attempt to say it generically grew a field a
@@ -453,6 +448,38 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
         }
 
         /*
+         * THE PAGE-VIEW BEACON, when the site writes analytics. Pages are prerendered and the
+         * Worker never sees them, so a one-line script on each production page posts the path
+         * here. On demand, so `/_webm/*` must be in run_worker_first - the doctor checks.
+         */
+        if (files.site.features?.analytics) {
+          injectRoute({
+            pattern: '/_webm/beacon',
+            entrypoint: '@cparkerwebm/webmonterey/pages/beacon',
+          });
+        }
+
+        /*
+         * MARKETING: the two pages a subscriber's links land on, and Mailgun's event webhook.
+         * All on demand; run_worker_first needs /subscribe/*, /unsubscribe (both forms) and
+         * /_webm/* - the mktg-binding doctor check lists what is missing.
+         */
+        if (files.site.features?.marketing) {
+          injectRoute({
+            pattern: '/subscribe/confirm',
+            entrypoint: '@cparkerwebm/webmonterey/pages/subscribe-confirm',
+          });
+          injectRoute({
+            pattern: '/unsubscribe',
+            entrypoint: '@cparkerwebm/webmonterey/pages/unsubscribe',
+          });
+          injectRoute({
+            pattern: '/_webm/mailgun',
+            entrypoint: '@cparkerwebm/webmonterey/pages/mailgun-webhook',
+          });
+        }
+
+        /*
          * THE WEBMASTER PAGE, and its share image served from the package. Indexable and in the
          * sitemap - the footer credit links here rather than off the site. See pages/webmaster.
          */
@@ -465,15 +492,6 @@ export default function webmonterey(options: WebmontereyOptions = {}): AstroInte
             pattern: '/webmaster/og.png',
             entrypoint: '@cparkerwebm/webmonterey/pages/webmaster-og',
           });
-        }
-
-        /*
-         * THE WEB APP'S PUBLIC PATH. Only when the site has switched the app on AND named a path
-         * other than the folder - with the default there is nothing to rewrite, and a middleware
-         * that runs on every request of every site to do nothing is not free. See app-middleware.
-         */
-        if (app && appPath !== APP_DIR) {
-          addMiddleware({ entrypoint: '@cparkerwebm/webmonterey/app-middleware', order: 'pre' });
         }
 
         /*

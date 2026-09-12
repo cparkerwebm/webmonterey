@@ -26,7 +26,7 @@ import Base from '../layouts/base.astro';
 import { copy } from '../includes/webmonterey/copy.ts';
 import {
   AGENCY,
-  AGENCY_LINK_ATTRS,
+  AGENCY_CTA_ATTRS,
   creditUrl,
   webmasterPageProps,
   WEBMASTER_OG_PATH,
@@ -147,7 +147,7 @@ if (Astro.site && !build.preview) {
                * The same attributes as the intro link, from the same constant.
                */}
               <p>
-                <a class="webm-webmaster-cta" href={props.cta.href} {...AGENCY_LINK_ATTRS}>
+                <a class="webm-webmaster-cta" href={props.cta.href} {...AGENCY_CTA_ATTRS}>
                   {props.cta.label}
                 </a>
               </p>
@@ -181,6 +181,18 @@ if (Astro.site && !build.preview) {
 
     .webm-webmaster-cta:hover {
       color: var(--webm-link-hover);
+    }
+
+    /*
+     * A FLOOR UNDER THE BUTTON, whatever it is wrapped in. A site laying the page out itself puts
+     * its own button class on the anchor and its own paragraph spacing above it, and on one site
+     * that spacing was a few pixels. The marker comes from AGENCY_CTA_ATTRS, so it is on the
+     * button in every layout; the built-in one above included. Pixels rather than a token on
+     * purpose: this is a minimum that must hold on a site whose spacing scale is unknown.
+     */
+    [data-webm-cta] {
+      display: inline-block;
+      margin-block-start: 25px;
     }
   }
 </style>

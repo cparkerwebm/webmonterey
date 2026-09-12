@@ -84,6 +84,23 @@ export interface Copy {
     /** The label of the outbound button to the agency. */
     cta: string;
   };
+  /**
+   * Marketing mail: the confirmation email and the two pages its links land on. Every string
+   * may carry `{client}`; `campaignFooter` takes `{domain}`. `body` arrays take the inline
+   * prose subset.
+   */
+  marketing: {
+    confirmSubject: string;
+    confirmBody: string;
+    confirmButton: string;
+    confirmed: { title: string; body: string[] };
+    unsubscribed: { title: string; body: string[] };
+    invalid: { title: string; body: string[] };
+    /** The line under every campaign; `{domain}` is the site. The link follows it. */
+    campaignFooter: string;
+    /** The unsubscribe link's text. */
+    campaignUnsubscribe: string;
+  };
 }
 
 /*
@@ -145,17 +162,39 @@ export const DEFAULT_COPY: Copy = {
   webmaster: {
     title: 'Our Webmaster',
     description:
-      'This {client} custom website was designed, built and managed by WebMonterey, a webmaster service in Monterey, California.',
+      'This {client} custom website was built and managed by WebMonterey, a webmaster service in Monterey, California.',
     intro: {
-      before: 'This {client} custom website was designed, built and managed by',
+      before: 'This {client} custom website was built and managed by',
       after:
-        ', a webmaster service in Monterey, California. WebMonterey handles web hosting, security, strategy and ongoing care of our site.',
+        ', a webmaster service in Monterey, California. WebMonterey handles our web hosting, domain and ongoing maintenance of our site.',
     },
     /* Bold on purpose: the contact instruction is the paragraph a visitor with a problem needs. */
     body: [
       "**If you have a question about the {client} website, notice something that isn't working, or have trouble using a page, please let WebMonterey know and they will take care of it.**",
     ],
     cta: 'Visit WebMonterey',
+  },
+  marketing: {
+    confirmSubject: 'Please confirm your subscription',
+    confirmBody:
+      'Thanks for signing up to hear from {client}. Confirm your email address to start receiving our updates. If you did not sign up, ignore this message and nothing more will be sent.',
+    confirmButton: 'Confirm subscription',
+    confirmed: {
+      title: 'Subscription confirmed',
+      body: ['Thanks - you are on the {client} list. You can unsubscribe from any email we send.'],
+    },
+    unsubscribed: {
+      title: 'You have been unsubscribed',
+      body: ['You will not receive further marketing email from {client}.'],
+    },
+    invalid: {
+      title: 'This link is no longer valid',
+      body: [
+        'It may have already been used, or it was copied incompletely. If you were trying to unsubscribe, use the link in the most recent email we sent you.',
+      ],
+    },
+    campaignFooter: 'You are receiving this because you subscribed at {domain}.',
+    campaignUnsubscribe: 'Unsubscribe',
   },
 };
 

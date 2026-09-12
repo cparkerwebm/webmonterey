@@ -1,35 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  APP_DIR,
   isConfigured,
   isPreviewBuild,
   isStagingDeployment,
   isValidTimeZone,
   PLACEHOLDER,
   previewReason,
-  resolveAppPath,
   resolveDisplayName,
-  workerFirstPaths,
 } from './config.ts';
-
-test('the app path defaults to the folder, so the common case needs no rewrite', () => {
-  assert.equal(resolveAppPath({}), APP_DIR);
-  assert.equal(resolveAppPath({ app: { path: 'portal' } }), 'portal');
-  assert.equal(resolveAppPath({ app: { path: '/portal/' } }), 'portal', 'slashes are stripped');
-  assert.equal(resolveAppPath({ app: { path: '/' } }), APP_DIR, 'and cannot become the root');
-});
-
-test('run_worker_first carries the PUBLIC app path in every form, only when enabled', () => {
-  assert.deepEqual(workerFirstPaths({}), ['/_actions/*']);
-  assert.deepEqual(workerFirstPaths({ app: { enabled: false, path: 'portal' } }), ['/_actions/*']);
-  assert.deepEqual(workerFirstPaths({ app: { enabled: true, path: 'portal' } }), [
-    '/_actions/*',
-    '/portal/*',
-    '/portal',
-    '/portal/',
-  ]);
-});
 
 test('isConfigured rejects the placeholder, empty and absent', () => {
   assert.equal(isConfigured(PLACEHOLDER), false);

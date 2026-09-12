@@ -53,15 +53,20 @@ const run = (cmd, args, cwd, quiet = true, env = {}) =>
   });
 
 /*
- * `astro build` with BOTH streams captured, because Astro's router warnings go to stderr and
- * execFileSync only returns stdout. The output is an assertion surface: a route collision is a
- * warning today and a hard error in a later Astro, so a build that succeeds while warning is a
- * build that will fail next year.
+ * THE SITE'S OWN `npm run build` - `wrangler types && astro check && astro build` - because that
+ * is what Workers Builds runs. Plain `astro build` was used here through 1.5.0, and it does not
+ * type-check, so a scaffold that failed `astro check` with zero components passed this test and
+ * failed the first push of every fresh site.
+ *
+ * BOTH streams captured, because Astro's router warnings go to stderr and execFileSync only
+ * returns stdout. The output is an assertion surface: a route collision is a warning today and a
+ * hard error in a later Astro, so a build that succeeds while warning is a build that will fail
+ * next year.
  */
 const build = (cwd) => {
-  const r = spawnSync('npx', ['astro', 'build'], { cwd, encoding: 'utf8', env: process.env });
+  const r = spawnSync('npm', ['run', 'build'], { cwd, encoding: 'utf8', env: process.env });
   const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
-  if (r.status !== 0) throw new Error(`astro build failed in ${cwd}\n${out}`);
+  if (r.status !== 0) throw new Error(`npm run build failed in ${cwd}\n${out}`);
   return out;
 };
 const COLLISION = /cannot be defined more than once/;
@@ -130,9 +135,23 @@ try {
   const siteJson = join(site, 'webmonterey.json');
   const scaffolded = JSON.parse(readFileSync(siteJson, 'utf8'));
   check('the scaffold starts a site on staging', scaffolded.environment === 'staging');
+  /*
+   * A 1.5-SHAPED SITE. The `app` key every pre-1.6 scaffold carried is left in place: it is no
+   * longer read, and this is the proof that a site upgrading with it is untouched. The webmaster
+   * layout written further down spreads the OLD button constant for the same reason - the
+   * upgrade path is run over both before the final build.
+   */
   writeFileSync(
     siteJson,
-    JSON.stringify({ ...scaffolded, environment: 'production' }, null, 2) + '\n',
+    JSON.stringify(
+      {
+        ...scaffolded,
+        environment: 'production',
+        app: { enabled: false, path: 'webapp', label: 'Portal' },
+      },
+      null,
+      2,
+    ) + '\n',
   );
 
   /*
@@ -212,7 +231,9 @@ try {
   );
   check(
     'the webmaster page names the client, in the description and in the words',
-    read('webmaster/index.html').includes('This E2E Example custom website was designed') &&
+    read('webmaster/index.html').includes(
+      'This E2E Example custom website was built and managed by',
+    ) &&
       /<meta name="description" content="This E2E Example custom website/.test(
         read('webmaster/index.html'),
       ) &&
@@ -272,7 +293,8 @@ try {
   execFileSync('mkdir', ['-p', join(site, 'src/components/general')]);
   writeFileSync(
     join(site, 'src/components/general/webmaster-page.astro'),
-    `---\nimport { AGENCY_LINK_ATTRS } from '@cparkerwebm/webmonterey/webmonterey/webmaster';\n` +
+    `---\nimport { AGENCY_LINK_ATTRS, type WebmasterPageProps } from '@cparkerwebm/webmonterey/webmonterey/webmaster';\n` +
+      `type Props = WebmasterPageProps;\n` +
       `const { title, intro, body, cta } = Astro.props;\n---\n` +
       `<article class="doc" data-child="CHILD_WEBMASTER_WINS">\n` +
       `  <h1 class="doc__title">{title}</h1>\n` +
@@ -316,6 +338,39 @@ try {
     !/<div class="webm-stack">/.test(webmasterAfter),
     'both layouts rendered',
   );
+
+  /*
+   * THE UPGRADE PATH, over the 1.5-shaped layout above: the codemods from 1.5.0 to the installed
+   * version, then the sync. The one codemod rewrites the button's spread; nothing else in the
+   * site changes. Then a rebuild, and the button carries the marker the page's floor rule keys on.
+   */
+  console.log('webm upgrade --codemods-from 1.5.0…');
+  const upgraded = run('npx', ['webm', 'upgrade', '--codemods-from', '1.5.0'], site);
+  check(
+    'the 1.6.0 codemod ran and named the layout it changed',
+    /1\.6\.0 .*AGENCY_CTA_ATTRS/.test(upgraded) && /webmaster-page\.astro/.test(upgraded),
+    upgraded.split('\n').slice(0, 6).join('\n'),
+  );
+  const layoutAfter = readFileSync(
+    join(site, 'src/components/general/webmaster-page.astro'),
+    'utf8',
+  );
+  check(
+    'the layout now spreads AGENCY_CTA_ATTRS and imports it',
+    /\{\.\.\.AGENCY_CTA_ATTRS\}/.test(layoutAfter) && !/AGENCY_LINK_ATTRS/.test(layoutAfter),
+  );
+  check(
+    'running the codemods again changes nothing',
+    /nothing to change/.test(run('npx', ['webm', 'upgrade', '--codemods-from', '1.5.0'], site)),
+  );
+  build(site);
+  check(
+    'after the upgrade the site-owned button carries the 25px-floor marker',
+    /<a data-cta href="https:\/\/webmonterey\.com\/\?utm_source=client[^"]*" target="_blank" rel="noopener" data-webm-cta>Visit WebMonterey<\/a>/.test(
+      read('webmaster/index.html'),
+    ),
+    'the codemod did not reach the built page',
+  );
   check(
     'the <head> the package owns is unchanged by the seam',
     owned(webmasterAfter) === owned(webmasterBefore) &&
@@ -356,6 +411,7 @@ try {
   run('npx', ['astro', 'build'], site, true, { WORKERS_CI_BRANCH: 'feature/x' });
   const previewIndex = read('index.html');
   check('every page on a preview is noindex', /name="robots" content="noindex/.test(previewIndex));
+  check('a preview page carries no page-view beacon', !/_webm\/beacon/.test(previewIndex));
   check('a preview page emits no canonical', !/rel="canonical"/.test(previewIndex));
   check('a preview has no sitemap', !existsSync(join(dist, 'sitemap-index.xml')));
   check('a preview robots.txt disallows everything', /Disallow: \/\s*$/m.test(read('robots.txt')));

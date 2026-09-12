@@ -148,6 +148,25 @@ npx wrangler secret put TURNSTILE_SECRET_KEY  # if not done in step 3
 **Record each one in the password manager as you create it.** Wrangler cannot read a secret
 back out, so nothing else in the system backs them up.
 
+**A secret with a live value and a test value is stored twice**, as `<NAME>` and `<NAME>_TEST`,
+suffix at the end so the pair sorts together in `wrangler secret list`. Any service with a
+sandbox flavour - a payment provider's API key and webhook secret, a mail sandbox domain, a maps
+or SMS or CRM key - is named this way; never a `_TEST_` infix, never a scheme per service. Code
+reads one or the other through `getBindingForMode('<NAME>', hostname)`: the `_TEST` value on a
+staging deployment (`environment` staging, or any workers.dev host), the live one otherwise.
+Nothing flips at launch - step 11 sets `environment` to production and the custom domain is not
+a workers.dev host, which is the whole selection rule. Local dev is a staging deployment, so
+`.dev.vars` holds the `_TEST` values. Put BOTH on the Worker now, so a preview of the launched
+site still reads test keys:
+
+```sh
+npx wrangler secret put STRIPE_SECRET_KEY         # live
+npx wrangler secret put STRIPE_SECRET_KEY_TEST    # sandbox
+```
+
+`webm doctor` warns when a mode-read secret is read with plain `getBinding` elsewhere, or is
+listed in `.dev.vars.example` without its `_TEST` twin.
+
 Public values - the Turnstile site key, a GTM container id - are not secrets. They go in
 `vars` in `wrangler.jsonc` or `gtmId` in `webmonterey.json`, and are committed.
 
@@ -160,6 +179,18 @@ npx wrangler d1 migrations apply <slug> --remote
 
 `--remote` is the step people forget. Local migrations do nothing in production, and local and
 remote are separate stores - **data never moves between them in either direction**.
+
+## 7b. The queue, if the site uses it
+
+A form test on the launched site proves the consumer ran, not only the producer: the
+notification arrives, and the row's `notified_at` is set -
+
+```sh
+npx wrangler d1 execute <slug> --remote --command "SELECT id, notified_at FROM submissions ORDER BY id DESC LIMIT 1"
+```
+
+A NULL there with a notification that never arrived is the consumer not running; `webm doctor`
+checks the wiring, and `npx wrangler queues info <slug>` shows a backlog.
 
 ## 8. Custom domain
 
@@ -192,7 +223,12 @@ gets the 404.
 **A form test before step 11 goes to `stagingEmail`** with `[staging → …]` in the subject naming
 who it was really for. That is the system working - check that inbox, not the client's.
 
-## 10. Analytics - two confirmations, asked out loud
+## 10. Analytics - three confirmations, asked out loud
+
+0. **"Has the site's own dataset received data?"** - after the launch form test in step 9, the
+   Analytics Engine dataset named for the slug shows the form events (Cloudflare dashboard,
+   Analytics Engine, or a platform query). Nothing there means the binding or `features.analytics`
+   is off; `webm doctor` says which.
 
 Neither of these can be checked from the repo, so **ask, and wait for the answer.** Do not
 proceed on an assumption, and do not mark either done because the field is filled in.
@@ -206,6 +242,42 @@ proceed on an assumption, and do not mark either done because the field is fille
    when someone looks a year from now.
 
 Record the answers in the launch commit message.
+
+## 10b. Marketing mail, for the select sites that have it
+
+Only when the client has agreed to a list. Everything is in the site's second D1 database;
+Mailgun only sends. The order matters because a signup can arrive the moment a form goes live.
+
+1. **The database.** `npx wrangler d1 create <slug>-mktg --binding=DB_MKTG --update-config`,
+   then add `"migrations_dir": "migrations-mktg"` to the entry wrangler wrote, and `npm run
+format`. Set `features.marketing: true`, run `npx webm sync` - it seeds `migrations-mktg/`
+   now that the feature is on - and apply: `npx wrangler d1 migrations apply <slug>-mktg --local`
+   and `--remote`.
+2. **Routes.** Add `"/subscribe/*"`, `"/unsubscribe"`, `"/unsubscribe/"` to `run_worker_first`.
+   `/_webm/*` is already there for the beacon and covers the webhook.
+3. **The sending domain.** `mktg.<client-domain>` in Mailgun, its SPF, DKIM and tracking records
+   in the zone, the same way as step 5 - and step 4's DMARC check applies to it too. Turn on
+   **unsubscribe tracking** for this domain and this domain only, so campaigns carry Mailgun's
+   List-Unsubscribe headers and the contact-form notifications from `webm.` do not.
+4. **Keys.** A domain sending key for `mktg.<domain>` - it can do nothing but send, which is
+   all the site needs - as `MAILGUN_MKTG_API_KEY`, with `MAILGUN_MKTG_DOMAIN`; and the `_TEST`
+   twins pointing at a Mailgun sandbox domain. The account's webhook signing key as
+   `MAILGUN_WEBHOOK_SIGNING_KEY`. Record each in the password manager.
+5. **The webhook.** In Mailgun, on the marketing domain: the `unsubscribed`, `complained` and
+   `permanent_fail` events to `https://<domain>/_webm/mailgun`. That is how a person who used
+   the header unsubscribe, complained, or bounced leaves the site's list.
+6. **The form.** The newsletter form's definition gets a `subscribe` block with `purposes` - the
+   sentence the form shows about what the list sends, stored with every signup as the record of
+   what they agreed to. Its component says the same sentence next to the field.
+7. **Prove it.** Sign up on the preview with a real inbox: the confirmation arrives from
+   `webm.<domain>`, its link lands on the confirmed page, and the row is `subscribed`. Click the
+   unsubscribe link in a test campaign (`sendCampaign` from an action or a cron, with the
+   `_TEST` domain on the preview) and the row is `unsubscribed`. `npx webm doctor` checks the
+   wiring.
+
+A site whose document pages use a richer layout exports `marketingPage` from its registry, the
+same seam as `webmasterPage`: it receives `{ title, body }` for the confirmed, unsubscribed and
+invalid-link pages. Without it, an `<h1>` and the paragraphs.
 
 ## 11. Hand the site its email back, and record the launch
 

@@ -1,0 +1,53 @@
+---
+/*
+ * The body of a marketing outcome page - confirmed, unsubscribed, link invalid.
+ *
+ * The site's `marketingPage` from the registry when it exports one, receiving the same
+ * `{ title, body }` a webmaster layout gets; otherwise an <h1> and the paragraphs in the
+ * package's own containers, the shape the built-in webmaster page uses. `{client}` is filled
+ * before either sees the strings, and the paragraphs are rendered through the inline prose
+ * subset, so a client's own copy can carry a link.
+ */
+import { marketingPage, pageHeader } from 'virtual:webm/registry';
+import { renderInline } from '../prose/inline.ts';
+import { personalize } from '../webmaster/webmaster.ts';
+import { client } from '../site.ts';
+
+interface Props {
+  outcome: { title: string; body: string[] };
+}
+
+const { outcome } = Astro.props;
+const title = personalize(outcome.title, client);
+const body = outcome.body.map((p) => renderInline(personalize(p, client)));
+
+const Page = marketingPage;
+const PageHeader = pageHeader;
+---
+
+{
+  Page ? (
+    <Page title={title} body={body} />
+  ) : (
+    <Fragment>
+      {PageHeader ? (
+        <PageHeader title={title} />
+      ) : (
+        <section class="webm-section" data-space="sm">
+          <div class="webm-container" data-width="text">
+            <h1>{title}</h1>
+          </div>
+        </section>
+      )}
+      <section class="webm-section" data-space="lg">
+        <div class="webm-container" data-width="text">
+          <div class="webm-stack">
+            {body.map((paragraph) => (
+              <p set:html={paragraph} />
+            ))}
+          </div>
+        </div>
+      </section>
+    </Fragment>
+  )
+}

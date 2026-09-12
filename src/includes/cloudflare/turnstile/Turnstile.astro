@@ -31,6 +31,22 @@ interface Props {
   action?: string;
   theme?: 'auto' | 'light' | 'dark';
   size?: 'normal' | 'flexible' | 'compact';
+  /**
+   * When the widget is visible. Turnstile's own default is `always`.
+   *
+   *   always            the form has room for the widget and the visitor should see it - a
+   *                     contact form, a registration.
+   *   interaction-only  nothing shows unless a challenge is actually needed. For an inline
+   *                     single-field form - a footer newsletter box - where a visible widget is
+   *                     bigger than the form. Most visitors never see it; suspected bots do.
+   *   execute           hidden until the challenge begins, then visible. Between the two: the
+   *                     widget appears while it works, so a visitor sees why the button waited.
+   *
+   * Appearance only affects the visible widget types; an invisible widget is never shown
+   * whatever this says. One site set `data-appearance` itself with an inline script after this
+   * component, racing Turnstile's loader - which is what a prop is for.
+   */
+  appearance?: 'always' | 'execute' | 'interaction-only';
 }
 
 const {
@@ -38,7 +54,16 @@ const {
   action,
   theme = 'auto',
   size = 'flexible',
+  appearance = 'always',
 } = Astro.props;
+
+/*
+ * The reserved height exists so a VISIBLE widget does not jump the form when it loads. With
+ * interaction-only nothing is shown until a challenge is needed, so reserving it would leave a
+ * blank band under a one-line form; the modifier drops it. `execute` keeps the reservation: the
+ * widget will appear on that form once the challenge starts.
+ */
+const quiet = appearance === 'interaction-only';
 
 if (!siteKey) {
   throw new Error(
@@ -53,11 +78,12 @@ const isTestKey = /^[12]x/.test(siteKey);
 ---
 
 <div
-  class="cf-turnstile webm-turnstile"
+  class:list={['cf-turnstile', 'webm-turnstile', { 'webm-turnstile--quiet': quiet }]}
   data-sitekey={siteKey}
   data-action={action}
   data-theme={theme}
   data-size={size}
+  data-appearance={appearance === 'always' ? undefined : appearance}
   data-error-callback="webmTurnstileError"
 >
 </div>
@@ -138,6 +164,11 @@ const isTestKey = /^[12]x/.test(siteKey);
     .webm-turnstile {
       /* Reserve the widget's height so the form does not jump when it loads. */
       min-block-size: 4.0625rem;
+    }
+
+    /* interaction-only: nothing to reserve for, see the frontmatter. */
+    .webm-turnstile--quiet {
+      min-block-size: 0;
     }
 
     .webm-turnstile__warning {

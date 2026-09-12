@@ -58,6 +58,14 @@
     "./cloudflare/turnstile": "./src/includes/cloudflare/turnstile/verify.ts",
     "./cloudflare/turnstile/Turnstile.astro": "./src/includes/cloudflare/turnstile/Turnstile.astro",
     "./cloudflare/workers": "./src/includes/cloudflare/workers/env.ts",
+    "./cloudflare/queues": "./src/includes/cloudflare/queues/consumer.ts",
+    "./cloudflare/analytics": "./src/includes/cloudflare/analytics/track.ts",
+    "./pages/beacon": "./src/pages/beacon.ts",
+    "./pages/subscribe-confirm": "./src/pages/subscribe-confirm.astro",
+    "./pages/unsubscribe": "./src/pages/unsubscribe.astro",
+    "./pages/mailgun-webhook": "./src/pages/mailgun-webhook.ts",
+    "./webmonterey/marketing": "./src/includes/webmonterey/marketing/index.ts",
+    "./sinch/mailgun/webhook": "./src/includes/sinch/mailgun/webhook.ts",
     "./google/tag-manager": "./src/includes/google/tag-manager/TagManager.astro",
     "./sinch/mailgun": "./src/includes/sinch/mailgun/send.ts",
     "./webmonterey/site": "./src/includes/webmonterey/site.ts",
@@ -73,7 +81,6 @@
     "./schema/design.json": "./schema/design.json",
     "./package.json": "./package.json",
     "./adapter": "./src/integration/adapter.ts",
-    "./app-middleware": "./src/integration/app-middleware.ts",
     "./worker": "./src/worker.ts"
   },
   "files": [

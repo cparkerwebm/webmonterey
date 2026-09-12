@@ -10,6 +10,7 @@ import {
   introHtml,
   webmasterPageProps,
   WEBMASTER_PATH,
+  AGENCY_CTA_ATTRS,
   AGENCY_LINK_ATTRS,
   personalize,
 } from './webmaster.ts';
@@ -162,7 +163,7 @@ test('the client name reaches every prop, and is escaped like text', () => {
 test('the default copy names the client in the description, the intro and the contact line', () => {
   const props = webmasterPageProps(DEFAULT_COPY.webmaster, 'https://x.test/', 'Acme Co');
   assert.match(props.description, /^This Acme Co custom website/);
-  assert.match(props.intro, /^This Acme Co custom website was designed, built and managed by <a /);
+  assert.match(props.intro, /^This Acme Co custom website was built and managed by <a /);
   assert.match(props.body[0]!, /about the Acme Co website/);
   assert.equal(props.cta.label, 'Visit WebMonterey');
 });
@@ -180,9 +181,16 @@ test('the built-in page renders the same intro string a site layout receives', (
   const anchors = template.match(/<a\s[^>]*>/g) ?? [];
   assert.equal(anchors.length, 1, 'the template writes exactly one link: the button');
   assert.match(anchors[0]!, /href=\{props\.cta\.href\}/);
-  assert.match(anchors[0]!, /\{\.\.\.AGENCY_LINK_ATTRS\}/);
-  assert.doesNotMatch(anchors[0]!, /target=|rel=/, 'attributes come from the constant only');
+  assert.match(anchors[0]!, /\{\.\.\.AGENCY_CTA_ATTRS\}/, 'the button spreads the CTA constant');
+  assert.doesNotMatch(
+    anchors[0]!,
+    /target=|rel=|data-webm-cta=/,
+    'attributes come from the constant only',
+  );
   assert.deepEqual(AGENCY_LINK_ATTRS, { target: '_blank', rel: 'noopener' });
+  assert.deepEqual(AGENCY_CTA_ATTRS, { target: '_blank', rel: 'noopener', 'data-webm-cta': '' });
+  /* The floor is a page-global rule keyed on the marker, so a site-owned layout gets it too. */
+  assert.match(page, /\[data-webm-cta\]\s*\{[^}]*margin-block-start:\s*25px/);
   const html = introHtml({ before: '', after: '' }, 'https://x.test/');
   assert.match(html, /target="_blank"/);
   assert.match(html, /rel="noopener"/);

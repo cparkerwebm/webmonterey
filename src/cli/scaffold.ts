@@ -114,6 +114,7 @@ export function scaffold(options: ScaffoldOptions): Record<string, string> {
         devDependencies: {
           '@astrojs/check': '^0.9.10',
           prettier: '^3.9.6',
+          'prettier-plugin-astro': '^0.14.1',
           typescript: '^6.0.3',
           wrangler: '^4.118.0',
         },
@@ -179,11 +180,16 @@ export function scaffold(options: ScaffoldOptions): Record<string, string> {
           sameAs: [],
         },
         '//features':
-          'Technical switches for what is WIRED on this site - not a commercial plan. Nothing here reads a tier. `platform` is reserved and inert until the platform mail relay ships.',
-        features: { compliance: true, d1: false, turnstile: false, platform: false },
-        '//app':
-          'The web app namespace, reserved on every site. The folder is ALWAYS src/pages/webapp/; `path` is the public URL segment - set `portal`, `members` or `account` for a client whose customers log in, and the framework rewrites it onto the folder. Everything else derives from this field. Every page under the folder must be `prerender = false`.',
-        app: { enabled: false, path: 'webapp', label: 'Portal' },
+          'Technical switches for what is WIRED on this site - not a commercial plan. Nothing here reads a tier. Each is switched on by the step that creates its resource: d1 and queue by /webm:start, turnstile and marketing by /webm:launch, analytics once its binding is in wrangler.jsonc. `platform` is reserved and inert until the platform mail relay ships.',
+        features: {
+          compliance: true,
+          d1: false,
+          turnstile: false,
+          queue: false,
+          analytics: true,
+          marketing: false,
+          platform: false,
+        },
       },
       null,
       2,
@@ -216,6 +222,22 @@ export function scaffold(options: ScaffoldOptions): Record<string, string> {
   // every page as "[object Object]", with no error and a successful build. \`webm doctor\` checks.\n` +
     `  "compatibility_date": "${compatibilityDate}",\n` +
     `  "compatibility_flags": ["nodejs_compat"],\n\n` +
+    `  // The Worker entrypoint: the adapter's own fetch plus the queue consumer, and room for a\n` +
+    `  // scheduled() handler if this site ever needs a cron. A SOURCE file the adapter builds -\n` +
+    `  // never a path into dist/.\n` +
+    `  "main": "./src/worker.ts",\n\n` +
+    `  // THE QUEUE. Notification and autoresponse mail go through it instead of the request, and\n` +
+    `  // a failed notification is retried rather than logged. Off until the queues exist: a\n` +
+    `  // binding to a queue that is not there fails the deploy. /webm:start creates both -\n` +
+    `  //   npx wrangler queues create ${n.slug} && npx wrangler queues create ${n.slug}-dlq\n` +
+    `  // - then uncomments this and sets features.queue in webmonterey.json. Without it the\n` +
+    `  // action sends inline, as every site did before 1.6.0.\n` +
+    `  // "queues": {\n` +
+    `  //   "producers": [{ "binding": "QUEUE", "queue": "${n.slug}" }],\n` +
+    `  //   "consumers": [\n` +
+    `  //     { "queue": "${n.slug}", "max_retries": 5, "dead_letter_queue": "${n.slug}-dlq" }\n` +
+    `  //   ]\n` +
+    `  // },\n\n` +
     `  // Astro's adapter builds static assets into dist/client, NOT dist.\n` +
     `  "assets": {\n` +
     `    "directory": "./dist/client",\n` +
@@ -231,9 +253,20 @@ export function scaffold(options: ScaffoldOptions): Record<string, string> {
     `     * >> ADD EVERY ROUTE YOU GIVE \`prerender = false\`, IN BOTH SLASH FORMS. <<\n` +
     `     * \`npx webm doctor\` checks this.\n` +
     `     */\n` +
-    `    "run_worker_first": ["/_actions/*"]\n` +
+    `    "run_worker_first": ["/_actions/*", "/_webm/*"]\n` +
     `  },\n\n` +
+    `  // MARKETING (features.marketing), for select clients. The list lives in a SECOND database,\n` +
+    `  // with its own migrations folder so they are never applied to the wrong one. Created by\n` +
+    `  // /webm:launch's marketing section:\n` +
+    `  //   npx wrangler d1 create ${n.slug}-mktg --binding=DB_MKTG --update-config\n` +
+    `  // then add "migrations_dir": "migrations-mktg" to the entry it writes, and add\n` +
+    `  // "/subscribe/*", "/unsubscribe", "/unsubscribe/" to run_worker_first above.\n\n` +
     `  "observability": { "enabled": true },\n\n` +
+    `  // ANALYTICS. Form events and a cookieless page-view count, written to a Workers Analytics\n` +
+    `  // Engine dataset named for the site. Nothing to create: the dataset appears on first write.\n` +
+    `  // The agency reads it; the site only writes. features.analytics in webmonterey.json is the\n` +
+    `  // switch, and /_webm/* above is the beacon's route.\n` +
+    `  "analytics_engine_datasets": [{ "binding": "ANALYTICS", "dataset": "${n.slug}" }],\n\n` +
     `  // Set BOTH explicitly. Toggling previews in the dashboard without updating this file\n` +
     `  // silently reverts it on the next deploy.\n` +
     `  "workers_dev": true,\n` +
@@ -296,6 +329,19 @@ export function scaffold(options: ScaffoldOptions): Record<string, string> {
     `export const blocks: Record<string, AstroComponentFactory> = {};\n\n` +
     `export const registeredTypes = (): string[] => Object.keys(blocks);\n`;
 
+  files['src/worker.ts'] =
+    `/*\n` +
+    ` * The Worker entrypoint, named by "main" in wrangler.jsonc: the adapter's own fetch, plus\n` +
+    ` * the queue consumer. A site that needs a Cron Trigger adds scheduled() here - see\n` +
+    ` * /webm:traps. fetch is never overridden; site-wide request logic is Astro middleware.\n` +
+    ` *\n` +
+    ` * formQueue handles the package's form messages and dispatches this site's own kinds:\n` +
+    ` *   formQueue({ 'crm.add': async (message, env) => { ... } })\n` +
+    ` */\n` +
+    `import { defineWorker } from '@cparkerwebm/webmonterey/worker';\n` +
+    `import { formQueue } from '@cparkerwebm/webmonterey/cloudflare/queues';\n\n` +
+    `export default defineWorker({ queue: formQueue() });\n`;
+
   files['src/content.config.ts'] =
     `import { webmontereyCollections } from '@cparkerwebm/webmonterey/content';\n\n` +
     `/*\n` +
@@ -305,7 +351,8 @@ export function scaffold(options: ScaffoldOptions): Record<string, string> {
     ` *   import { schema as content000001 } from './components/content/content-000001/schema.ts';\n` +
     ` *   export const collections = webmontereyCollections([content000001]);\n` +
     ` *\n` +
-    ` * A union needs at least one member, so this stays commented until the first component exists.\n` +
+    ` * An empty union is fine - it compiles, and rejects every block until a component exists - so\n` +
+    ` * the call below is live from day one and grows a member per component.\n` +
     ` */\n` +
     `export const collections = webmontereyCollections([]);\n`;
 
@@ -377,7 +424,24 @@ export function scaffold(options: ScaffoldOptions): Record<string, string> {
     `# Record each one in the password manager as you create it: wrangler cannot read a secret back.\n\n` +
     `# TURNSTILE_SECRET_KEY=\n` +
     `# MAILGUN_API_KEY=\n` +
-    `# MAILGUN_DOMAIN=\n`;
+    `# MAILGUN_DOMAIN=\n\n` +
+    `# A SECRET WITH A LIVE VALUE AND A TEST VALUE is stored twice on the Worker: <NAME> for live\n` +
+    `# and <NAME>_TEST for test, suffix at the end so the pair sorts together. Code reads one or\n` +
+    `# the other through getBindingForMode: the _TEST value on a staging deployment (environment\n` +
+    `# "staging", or any workers.dev host), the live one otherwise. Local dev is a staging\n` +
+    `# deployment, so THIS FILE HOLDS THE _TEST VALUES. Any service with a sandbox flavour - a\n` +
+    `# payment key and its webhook secret, a mail sandbox, a maps or SMS or CRM key - is named this\n` +
+    `# way, with no scheme per service. Example, for a site that takes payments:\n` +
+    `#\n` +
+    `# STRIPE_SECRET_KEY_TEST=\n` +
+    `# STRIPE_WEBHOOK_SECRET_TEST=\n\n` +
+    `# MARKETING MAIL (features.marketing), for the select sites that have it. Campaigns send from\n` +
+    `# mktg.<domain> through a Mailgun DOMAIN SENDING KEY - it can do nothing but send - and the\n` +
+    `# pair below has a _TEST twin pointing at a Mailgun sandbox domain, read on staging and here.\n` +
+    `# The signing key verifies Mailgun's webhook; it is one value per Mailgun account.\n` +
+    `# MAILGUN_MKTG_API_KEY_TEST=\n` +
+    `# MAILGUN_MKTG_DOMAIN_TEST=\n` +
+    `# MAILGUN_WEBHOOK_SIGNING_KEY=\n`;
 
   files['.nvmrc'] = '24\n';
 

@@ -1,0 +1,26 @@
+---
+/*
+ * /subscribe/confirm?t=<token> - the link in the confirmation email. On demand: it writes the
+ * row. Never indexed, never in the sitemap; a page nobody arrives at except from their inbox.
+ *
+ * A token that is not token-shaped is answered as invalid without a query, and every outcome is
+ * a 200 with a sentence - the person clicked a link in an email and deserves words, not a
+ * status code.
+ */
+import Base from '../layouts/base.astro';
+import Outcome from '../includes/webmonterey/marketing/Outcome.astro';
+import { copy } from '../includes/webmonterey/copy.ts';
+import { confirmSubscription, isToken } from '../includes/webmonterey/marketing/index.ts';
+
+export const prerender = false;
+
+const token = Astro.url.searchParams.get('t');
+const result = isToken(token)
+  ? await confirmSubscription(token, Astro.request.headers.get('CF-Connecting-IP'))
+  : 'invalid';
+const outcome = result === 'invalid' ? copy.marketing.invalid : copy.marketing.confirmed;
+---
+
+<Base title={outcome.title} noindex structuredData={false}>
+  <Outcome outcome={outcome} />
+</Base>

@@ -45,16 +45,17 @@ const PageHeader = pageHeader;
   marking a confirmation page noindex in its own JSON had that silently ignored on rebuild - the
   page came back indexable, with a canonical, which is the opposite of what it asked for.
 
-  Read defensively: a site using the package's own content schema may not define either field.
+  The four fields are declared in the package schema (blocks.ts), so they are forwarded plainly.
+  Another image passes its own size or none - the layout measures only the default card.
 */
 }
 <Base
   title={page.data.title}
   description={page.data.description}
-  noindex={(page.data as { noindex?: boolean }).noindex ?? false}
-  {...(page.data as { shareImage?: string }).shareImage
-    ? { shareImage: (page.data as { shareImage?: string }).shareImage }
-    : {}}
+  noindex={page.data.noindex}
+  {...page.data.shareImage ? { shareImage: page.data.shareImage } : {}}
+  {...page.data.shareImageWidth ? { shareImageWidth: page.data.shareImageWidth } : {}}
+  {...page.data.shareImageHeight ? { shareImageHeight: page.data.shareImageHeight } : {}}
 >
   {
     /*

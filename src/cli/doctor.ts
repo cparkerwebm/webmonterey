@@ -211,8 +211,15 @@ export function buildContext(siteRoot: string): CheckContext {
     includes: readTree(siteRoot, 'src/includes', ['.ts', '.astro']),
     emails: readTree(siteRoot, 'src/emails', ['.ts']),
     migrations: readTree(siteRoot, 'migrations', ['.sql']),
+    migrationsMktg: readTree(siteRoot, 'migrations-mktg', ['.sql']),
     registry: existsSync(join(siteRoot, 'src/components/registry.ts'))
       ? readFileSync(join(siteRoot, 'src/components/registry.ts'), 'utf8')
+      : null,
+    contentConfig: existsSync(join(siteRoot, 'src/content.config.ts'))
+      ? readFileSync(join(siteRoot, 'src/content.config.ts'), 'utf8')
+      : null,
+    devVarsExample: existsSync(join(siteRoot, '.dev.vars.example'))
+      ? readFileSync(join(siteRoot, '.dev.vars.example'), 'utf8')
       : null,
     present: Object.fromEntries(
       [

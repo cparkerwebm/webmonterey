@@ -162,7 +162,7 @@ test('the webmaster page declares its own share image and structured data', () =
    */
   assert.match(
     page,
-    /<meta name="description" content="This Minimal Example custom website was designed/,
+    /<meta name="description" content="This Minimal Example custom website was built/,
   );
   assert.doesNotMatch(page, /\{client\}/, 'an unfilled {client} placeholder reached the page');
 });
@@ -184,9 +184,9 @@ test('without a webmasterPage export the page body is the built-in layout, byte 
     main,
     '<section class="webm-section" data-space="sm"><div class="webm-container" data-width="text"><h1>Our Webmaster</h1></div></section>' +
       '<section class="webm-section" data-space="lg"><div class="webm-container" data-width="text"><div class="webm-stack">' +
-      `<p>This Minimal Example custom website was designed, built and managed by <a href="${link}" target="_blank" rel="noopener">WebMonterey</a>, a webmaster service in Monterey, California. WebMonterey handles web hosting, security, strategy and ongoing care of our site.</p>` +
+      `<p>This Minimal Example custom website was built and managed by <a href="${link}" target="_blank" rel="noopener">WebMonterey</a>, a webmaster service in Monterey, California. WebMonterey handles our web hosting, domain and ongoing maintenance of our site.</p>` +
       '<p><strong>If you have a question about the Minimal Example website, notice something that isn&#39;t working, or have trouble using a page, please let WebMonterey know and they will take care of it.</strong></p>' +
-      `<p><a class="webm-webmaster-cta" href="${link}" target="_blank" rel="noopener">Visit WebMonterey</a></p>` +
+      `<p><a class="webm-webmaster-cta" href="${link}" target="_blank" rel="noopener" data-webm-cta>Visit WebMonterey</a></p>` +
       '</div></div></section>',
   );
 });
@@ -249,5 +249,32 @@ test('the focus ring is composed from its parts, so a component can override it'
   assert.match(
     css,
     /:focus-visible\{[^}]*outline:var\(--webm-focus-width\) solid var\(--webm-focus-color\)/,
+  );
+});
+
+test('the Turnstile appearance prop writes the attribute only when set, and quiets the height', () => {
+  const page = readFileSync(join(DIST, 'turnstile/index.html'), 'utf8');
+  const widgets = page.match(/<div class="cf-turnstile webm-turnstile[^"]*"[^>]*>/g) ?? [];
+  assert.equal(widgets.length, 2, 'both forms render a widget');
+  const [plain, quiet] = widgets;
+  assert.doesNotMatch(plain, /data-appearance/, 'the default markup is unchanged');
+  assert.doesNotMatch(plain, /webm-turnstile--quiet/);
+  assert.match(quiet, /data-appearance="interaction-only"/);
+  assert.match(quiet, /class="cf-turnstile webm-turnstile webm-turnstile--quiet"/);
+  assert.match(quiet, /data-action="subscribe"/);
+});
+
+test('a production page carries the page-view beacon, one inline line to the package route', () => {
+  const beacon = html.match(/<script>([^<]*sendBeacon[^<]*)<\/script>/)?.[1] ?? '';
+  assert.match(beacon, /navigator\.sendBeacon\('\/_webm\/beacon'/);
+  assert.doesNotMatch(
+    beacon,
+    /cookie|localStorage|userAgent/,
+    'the beacon reads nothing identifying',
+  );
+  assert.match(
+    beacon,
+    /p:location\.pathname,r:document\.referrer/,
+    'a path and a referrer, nothing else',
   );
 });

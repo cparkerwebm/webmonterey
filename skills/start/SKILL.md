@@ -85,12 +85,38 @@ Create only what the site needs. A marketing site with a contact form needs D1; 
 R2 until someone has a video.
 
 ```sh
-npx wrangler d1 create <slug> --update-config     # writes the binding into wrangler.jsonc
+npx wrangler d1 create <slug> --binding=DB --update-config   # the binding MUST be DB
+npm run format                                               # wrangler rewrites the file with tabs
 npx wrangler d1 migrations apply <slug> --local
-npx wrangler r2 bucket create <slug>              # only if media is going to R2
+npx wrangler r2 bucket create <slug>                         # only if media is going to R2
 ```
 
-Set `features.d1: true` once the binding exists. `features.turnstile` waits for `/webm:launch`,
+**`--binding=DB` is not optional.** Without it wrangler prompts for a binding name and, in a
+session with no terminal, defaults it to the database name - and the package writes through `DB`,
+so the form stores nothing and `webm doctor` fails until it is renamed. `--update-config` also
+rewrites `wrangler.jsonc` with tabs and no blank lines; `npm run format` puts it back.
+
+Set `features.d1: true` once the binding exists.
+
+**The queue, for every site with a form.** Notification and autoresponse mail go through it
+instead of the request, and a failed notification is retried rather than logged. Two queues, the
+slug and its dead-letter queue; there is no `--update-config` for queues, so the scaffold already
+wrote the block into `wrangler.jsonc` as a comment:
+
+```sh
+npx wrangler queues create <slug>
+npx wrangler queues create <slug>-dlq
+```
+
+Then uncomment the `"queues"` block in `wrangler.jsonc` and set `features.queue: true`.
+
+**Analytics needs nothing here.** The `ANALYTICS` binding is in the scaffolded `wrangler.jsonc`
+and `features.analytics` is already on; the Analytics Engine dataset, named for the slug, is
+created the first time the Worker writes to it. Form events and a cookieless page-view count go
+there, and the agency reads them from the platform - the site only writes. The
+consumer is already exported by `src/worker.ts`. Until both are done the action sends inline,
+which is correct and what `webm doctor` will say if only one of them is. `astro dev` does not run
+consumers; `npm run preview` does, so a form test on the preview is what proves the queue. `features.turnstile` waits for `/webm:launch`,
 which creates the widget and its keys together - a sitekey without its secret fails exactly
 like a bot does.
 

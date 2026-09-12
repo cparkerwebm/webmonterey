@@ -99,6 +99,11 @@ declare module 'virtual:webm/registry' {
    */
   export const webmasterPage: AstroComponentFactory | null;
   /**
+   * The body of the marketing outcome pages (confirmed, unsubscribed, invalid link), receiving
+   * `{ title, body }` - body as HTML paragraphs. Null means an <h1> and the paragraphs.
+   */
+  export const marketingPage: AstroComponentFactory | null;
+  /**
    * The site's JSON-LD, rendered into <head> on every indexable route. The package emits none of
    * its own; this component composes a graph from the builders in
    * `@cparkerwebm/webmonterey/structured-data`, and receives `{ title, description, image }`
@@ -126,6 +131,14 @@ declare module 'virtual:webm/forms' {
       turnstile?: boolean;
       /** Rename the honeypot trap, or `false` to disable it. See includes/webmonterey/forms. */
       honeypot?: string | false;
+      /**
+       * This form signs its visitor up to the site's marketing list (features.marketing). The
+       * address is the form's `email` field and the name its `name` field. `purposes` is what
+       * the form told them the list sends, stored verbatim with the signup as the record of what
+       * they agreed to; `vars` names fields to keep as segment data. Confirmed opt-in always:
+       * a confirmation mail goes out and nothing is sent until its link is clicked.
+       */
+      subscribe?: { purposes: string; policyVersion?: string; vars?: string[] };
     }
   >;
 }

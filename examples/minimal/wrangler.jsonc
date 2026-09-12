@@ -7,9 +7,18 @@
     "not_found_handling": "404-page",
     // Every route with `export const prerender = false`, in BOTH slash forms.
     // Missing one returns 200 to curl and a 404 page to Chrome.
-    "run_worker_first": ["/_actions/*", "/contact", "/contact/"],
+    "run_worker_first": [
+      "/_actions/*",
+      "/_webm/*",
+      "/subscribe/*",
+      "/unsubscribe",
+      "/unsubscribe/",
+      "/contact",
+      "/contact/",
+    ],
   },
   "observability": { "enabled": true },
+  "analytics_engine_datasets": [{ "binding": "ANALYTICS", "dataset": "minimal-example" }],
   "workers_dev": true,
   "preview_urls": true,
 
@@ -24,5 +33,12 @@
    */
   "d1_databases": [
     { "binding": "DB", "database_name": "minimal-example-db", "database_id": "local-only" },
+    /* The marketing list, in its own database with its own migrations folder. */
+    {
+      "binding": "DB_MKTG",
+      "database_name": "minimal-example-mktg",
+      "database_id": "local-only",
+      "migrations_dir": "migrations-mktg",
+    },
   ],
 }
