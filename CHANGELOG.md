@@ -40,8 +40,10 @@ nothing else. `npx webm upgrade` runs the one codemod, syncs the skills and chec
   reach the Worker. Cookieless and aggregate - no identifier, cookie, IP, user agent, full referrer
   or query string is ever written - so it runs without consent, and it still stays off on previews
   and on pages rendered with `analytics={false}`. The dataset appears on first write, so the
-  scaffold ships the binding and the flag ON; an existing site adds the binding, `/_webm/*` to
-  `run_worker_first`, and the flag. The column contract is in `analytics/datapoint.ts` and is
+  scaffold ships the binding and the flag ON, **and the 1.6.0 codemod switches it on for every
+  existing site** - the binding, `/_webm/*` in `run_worker_first`, the flag - the one thing this
+  release turns on for a site that did not ask, because nothing behind it can fail a deploy and
+  every client should have the numbers. The column contract is in `analytics/datapoint.ts` and is
   fleet-wide: the platform's queries depend on it. Reads stay in the platform. `webm doctor` gains
   `analytics-binding`. `@cparkerwebm/webmonterey/cloudflare/analytics`.
 
@@ -141,9 +143,10 @@ nothing else. `npx webm upgrade` runs the one codemod, syncs the skills and chec
 
 ### For every site
 
-1. `npx webm upgrade`. The codemod touches only a site-owned webmaster layout.
-2. Nothing else is required. To take the new capabilities: `/webm:start` step 4 for the queue,
-   the analytics binding and `/_webm/*` for analytics, `/webm:launch` 10b for marketing.
+1. `npx webm upgrade`. The codemod rewrites the button spread in a site-owned webmaster layout
+   and switches analytics on; nothing else changes.
+2. Nothing else is required. To take the queue: the "Enabling the queue on a site scaffolded
+   before 1.6.0" section of `/webm:traps`. For marketing: `/webm:launch` 10b.
 
 ---
 

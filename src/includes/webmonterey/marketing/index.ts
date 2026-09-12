@@ -30,6 +30,8 @@ import type { CampaignBatchMessage, SubscribeMessage } from '../../cloudflare/qu
 import {
   audiencePage,
   batchSent,
+  campaignById,
+  completeCampaign,
   confirmByToken,
   recordBatch,
   recordCampaign,
@@ -124,6 +126,18 @@ export interface CampaignInput {
   params?: unknown[];
   /** The request hostname, when there is one; a cron passes null. */
   hostname: string | null;
+  /**
+   * WARM-UP CONTROLS, for a new sending domain. Mailgun's own schedule starts a domain at 1,000
+   * messages a day and no more than 100 an hour, and climbs a stage at a time - so a campaign
+   * can be capped (`limit`: at most this many recipients, in id order, from where the audience
+   * starts) and paced (`batchSize` recipients per batch, one batch every `batchEverySeconds`,
+   * as the queue's own delay - so 100 an hour is `{ batchSize: 100, batchEverySeconds: 3600 }`).
+   * Pacing needs the queue; inline sending ignores it and says so. Cloudflare caps a delay at 12
+   * hours, so a single send paces at most that far ahead; the next day is a new key.
+   */
+  limit?: number;
+  batchSize?: number;
+  batchEverySeconds?: number;
 }
 
 export interface CampaignResult {
@@ -134,63 +148,92 @@ export interface CampaignResult {
   queued: boolean;
 }
 
-/** Cloudflare's batch ceiling per Mailgun call. */
+/** Mailgun's ceiling per call. */
 export const BATCH_SIZE = 1000;
+
+/** Cloudflare's ceiling on a queued message's delay: 12 hours. */
+export const MAX_DELAY_SECONDS = 43200;
 
 /**
  * Send a campaign to the audience, in batches of up to 1,000, each batch a queue message
- * retried alone - or sent inline, in order, when the site has no queue. The campaign is
- * recorded first, so a batch that runs twice sends once.
+ * retried alone - or sent inline, in order, when the site has no queue. The campaign row is
+ * written first with the body and the audience query, so a batch message is only an id range
+ * and a batch that runs twice sends once.
  */
 export async function sendCampaign(input: CampaignInput): Promise<CampaignResult> {
   const database = db();
+  const { text, html } = withFooter(input.text, input.html);
   const campaignId = await recordCampaign(database, {
     key: input.key,
     subject: input.subject,
-    audience: input.where,
+    text,
+    html,
+    where: input.where,
+    params: input.params,
   });
 
-  const { text, html } = withFooter(input.text, input.html);
   const queue = features?.queue ? getQueue() : null;
+  const batchSize = Math.min(Math.max(1, input.batchSize ?? BATCH_SIZE), BATCH_SIZE);
+  const spacing = Math.max(0, input.batchEverySeconds ?? 0);
+  if (spacing && !queue) {
+    console.warn('[webm] sendCampaign: batchEverySeconds needs the queue; sending without pacing.');
+  }
   let after = 0;
   let batch = 0;
   let recipients = 0;
   for (;;) {
+    const remaining = input.limit === undefined ? batchSize : input.limit - recipients;
+    if (remaining <= 0) break;
     const page = await audiencePage(database, {
       where: input.where,
       params: input.params,
       after,
-      limit: BATCH_SIZE,
+      limit: Math.min(batchSize, remaining),
     });
     if (page.length === 0) break;
-    after = page[page.length - 1]!.id;
-    batch += 1;
-    recipients += page.length;
-
     const message: CampaignBatchMessage = {
       kind: 'campaign.batch',
       campaignId,
-      batch,
-      subject: input.subject,
-      text,
-      html,
-      recipients: page.map((r) => ({ email: r.email, name: r.name, token: r.token })),
+      batch: ++batch,
+      fromId: after,
+      toId: page[page.length - 1]!.id,
       hostname: input.hostname,
     };
+    after = message.toId;
+    recipients += page.length;
+
     if (queue && fitsQueue(message)) {
-      await queue.send(message);
+      const delaySeconds = Math.min(MAX_DELAY_SECONDS, spacing * (batch - 1));
+      await queue.send(message, delaySeconds ? { delaySeconds } : undefined);
     } else {
       await sendCampaignBatch(message);
     }
   }
+  await completeCampaign(database, campaignId, batch);
   return { campaignId, batches: batch, recipients, queued: Boolean(queue) };
 }
 
-/** One batch, to Mailgun, through the marketing domain and key. Idempotent per batch. */
+/**
+ * One batch, to Mailgun, through the marketing domain and key. Reads the body and its rows back
+ * from the campaign row - anyone who unsubscribed since the campaign started is simply not in
+ * the range any more. Idempotent per batch.
+ */
 export async function sendCampaignBatch(message: CampaignBatchMessage): Promise<void> {
   const database = db();
   if (await batchSent(database, message.campaignId, message.batch)) return;
-  if (message.recipients.length === 0) return;
+  const campaign = await campaignById(database, message.campaignId);
+  if (!campaign) {
+    console.error(`[webm] Campaign ${message.campaignId} is not in the database; batch dropped.`);
+    return;
+  }
+  const recipients = await audiencePage(database, {
+    where: campaign.audience_where ?? undefined,
+    params: JSON.parse(campaign.audience_params) as unknown[],
+    after: message.fromId,
+    to: message.toId,
+    limit: BATCH_SIZE,
+  });
+  if (recipients.length === 0) return;
 
   const mktgDomain = getBindingForMode<string>('MAILGUN_MKTG_DOMAIN', message.hostname);
   const site = origin();
@@ -200,12 +243,12 @@ export async function sendCampaignBatch(message: CampaignBatchMessage): Promise<
     hostname: message.hostname,
     domain: mktgDomain,
     from: `${displayName()} <news@${mktgDomain}>`,
-    to: message.recipients.map((r) => r.email),
-    subject: message.subject,
-    text: message.text,
-    html: message.html,
+    to: recipients.map((r) => r.email),
+    subject: campaign.subject,
+    text: campaign.text,
+    html: campaign.html,
     recipientVariables: Object.fromEntries(
-      message.recipients.map((r) => [
+      recipients.map((r) => [
         r.email,
         { name: r.name ?? '', unsubscribe: unsubscribeUrl(site, r.token) },
       ]),
@@ -215,7 +258,7 @@ export async function sendCampaignBatch(message: CampaignBatchMessage): Promise<
   await recordBatch(database, {
     campaignId: message.campaignId,
     batch: message.batch,
-    recipients: message.recipients.length,
+    recipients: recipients.length,
     messageId: result.id,
   });
   track({

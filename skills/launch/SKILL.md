@@ -269,7 +269,16 @@ format`. Set `features.marketing: true`, run `npx webm sync` - it seeds `migrati
 6. **The form.** The newsletter form's definition gets a `subscribe` block with `purposes` - the
    sentence the form shows about what the list sends, stored with every signup as the record of
    what they agreed to. Its component says the same sentence next to the field.
-7. **Prove it.** Sign up on the preview with a real inbox: the confirmation arrives from
+7. **Warm the domain before the first real campaign.** `mktg.<domain>` has no reputation, and
+   mailbox providers judge a new sender on its first days. Mailgun's own schedule for a new
+   domain starts at **1,000 messages a day and no more than 100 an hour**, climbs a stage at a
+   time, and assumes sending EVERY day - a gap means starting the stage over. To the most
+   engaged people first, and hold a stage while bounces and complaints stay low; a 50k list
+   takes about a week, a small one may be done in a day. `sendCampaign` has the controls:
+   `{ limit: 1000, batchSize: 100, batchEverySeconds: 3600 }` is stage one, a new `key` per day,
+   and the numbers rise with the stages. Pacing rides on the queue's delay, so it needs
+   `features.queue`.
+8. **Prove it.** Sign up on the preview with a real inbox: the confirmation arrives from
    `webm.<domain>`, its link lands on the confirmed page, and the row is `subscribed`. Click the
    unsubscribe link in a test campaign (`sendCampaign` from an action or a cron, with the
    `_TEST` domain on the preview) and the row is `unsubscribed`. `npx webm doctor` checks the

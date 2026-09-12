@@ -268,6 +268,40 @@ logic goes in Astro middleware instead.
 `webm doctor` fails on a cron with no `main`, on a `main` that names a build artefact, on an
 entrypoint with no `scheduled`, and on one that forgets the adapter handler.
 
+### Enabling the queue on a site scaffolded before 1.6.0
+
+Nothing switches it on by itself: the action checks `features.queue` and the `QUEUE` binding on
+every submission and sends inline until both are there, so an older site keeps working exactly
+as it did. A site scaffolded since 1.6.0 has the block below as a comment in `wrangler.jsonc`
+and `src/worker.ts` already; an older site types both. Two queues, named for the slug:
+
+```sh
+npx wrangler queues create <slug>
+npx wrangler queues create <slug>-dlq
+```
+
+```jsonc
+// wrangler.jsonc
+"main": "./src/worker.ts",
+"queues": {
+  "producers": [{ "binding": "QUEUE", "queue": "<slug>" }],
+  "consumers": [{ "queue": "<slug>", "max_retries": 5, "dead_letter_queue": "<slug>-dlq" }]
+}
+```
+
+```ts
+// src/worker.ts - or, on a site that already has one for a cron, the queue line added to it
+import { defineWorker } from '@cparkerwebm/webmonterey/worker';
+import { formQueue } from '@cparkerwebm/webmonterey/cloudflare/queues';
+
+export default defineWorker({ queue: formQueue() });
+```
+
+Then `features.queue: true` in `webmonterey.json`, `npm run build`, and a form test on
+`npm run preview` - `astro dev` does not run consumers. The site's own integrations join the
+same queue: a handler per kind on `formQueue({ 'crm.add': ... })`, posted with the `QUEUE`
+binding. `webm doctor` names whichever of the four pieces is missing.
+
 **`./dist/_worker.js/index.js` is the value NOT to use.** It is the Pages-era form, it names a
 build artefact rather than a source file, and it fails the build with "main field doesn't point to
 an existing file".

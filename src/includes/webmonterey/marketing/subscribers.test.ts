@@ -146,8 +146,44 @@ test('the audience is subscribed rows only, paged by id, with the segment ANDed 
   assert.deepEqual(calls[0]!.params, [4, 'pro', 500]);
 });
 
-test('a campaign is recorded once per key and its id comes back every time', async () => {
+test('a campaign is recorded once per key with its body and audience, and its id comes back every time', async () => {
   const { db, calls } = fakeDb([{}, { first: { id: 7 } }]);
-  assert.equal(await recordCampaign(db, { key: '2026-10', subject: 'News' }), 7);
-  assert.match(calls[0]!.sql, /INSERT OR IGNORE INTO campaigns/);
+  const id = await recordCampaign(db, {
+    key: '2026-10',
+    subject: 'News',
+    text: 'T',
+    html: '<p>H</p>',
+    where: `vars ->> '$.plan' = ?`,
+    params: ['pro'],
+  });
+  assert.equal(id, 7);
+  assert.match(
+    calls[0]!.sql,
+    /INSERT OR IGNORE INTO campaigns \(key, subject, text, html, audience_where, audience_params\)/,
+  );
+  assert.deepEqual(calls[0]!.params, [
+    '2026-10',
+    'News',
+    'T',
+    '<p>H</p>',
+    `vars ->> '$.plan' = ?`,
+    '["pro"]',
+  ]);
+});
+
+test('a batch re-reads its id range with the same audience query, and a range is inclusive at the top', async () => {
+  const rows = [{ id: 5, email: 'a@x.com', name: null, token: 't', vars: '{}' }];
+  const { db, calls } = fakeDb([{ all: rows }]);
+  const page = await audiencePage(db, {
+    where: 'name IS NOT NULL',
+    after: 4,
+    to: 1004,
+    limit: 1000,
+  });
+  assert.deepEqual(page, rows);
+  assert.match(
+    calls[0]!.sql,
+    /WHERE status = 'subscribed' AND id > \? AND id <= \? AND \(name IS NOT NULL\) ORDER BY id LIMIT \?/,
+  );
+  assert.deepEqual(calls[0]!.params, [4, 1004, 1000]);
 });

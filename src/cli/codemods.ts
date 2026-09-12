@@ -11,6 +11,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { slugFor } from './slug.ts';
 export interface Codemod {
   /** The version whose changes this handles, e.g. '2.0.0'. */
   version: string;
@@ -52,10 +53,102 @@ function webmasterPagePath(registry: string): string | null {
   return imported ? imported[1]! : null;
 }
 
+/*
+ * 1.6.0, second step: analytics on every site.
+ *
+ * THE ONE THING 1.6.0 SWITCHES ON FOR AN EXISTING SITE, and the reason it may: the Analytics
+ * Engine dataset creates itself on first write, so the binding cannot fail a deploy; the
+ * run_worker_first entry is a route the package injects; and the flag reads both. None of the
+ * three has a resource behind it, unlike the queue and the marketing database, which stay a
+ * person's decision. Every client should have the numbers, so every client gets them on upgrade.
+ *
+ * wrangler.jsonc is JSONC with comments, so it is edited as TEXT, never parsed and re-serialised:
+ * a site's comments are the site's. The binding goes in above "observability" when that line
+ * exists, else before the closing brace; the route is appended inside the run_worker_first
+ * array. webmonterey.json is plain JSON and round-trips through JSON.parse with its key order.
+ */
+function enableAnalytics(siteRoot: string): string[] {
+  const changes: string[] = [];
+  const sitePath = join(siteRoot, 'webmonterey.json');
+  if (!existsSync(sitePath)) return changes;
+  const site = JSON.parse(readFileSync(sitePath, 'utf8')) as {
+    domain?: string;
+    slug?: string;
+    features?: Record<string, unknown>;
+  };
+  const slug = site.slug ?? (site.domain ? safeSlug(site.domain) : null);
+
+  const wranglerPath = ['wrangler.jsonc', 'wrangler.json']
+    .map((f) => join(siteRoot, f))
+    .find(existsSync);
+  if (wranglerPath && slug) {
+    let text = readFileSync(wranglerPath, 'utf8');
+    const before = text;
+
+    if (!/"analytics_engine_datasets"/.test(text)) {
+      const block =
+        `  // ANALYTICS. Form events and a cookieless page-view count, written to a Workers Analytics\n` +
+        `  // Engine dataset named for the site. Nothing to create: the dataset appears on first write.\n` +
+        `  "analytics_engine_datasets": [{ "binding": "ANALYTICS", "dataset": "${slug}" }],\n\n`;
+      const at = text.search(/^[ \t]*"observability"/m);
+      if (at !== -1) {
+        text = text.slice(0, at) + block + text.slice(at);
+      } else {
+        const close = text.lastIndexOf('}');
+        text =
+          text.slice(0, close).replace(/,?\s*$/, ',\n\n') +
+          block.replace(/,\n\n$/, '\n') +
+          text.slice(close);
+      }
+      changes.push(`wrangler.jsonc: the ANALYTICS binding, dataset "${slug}"`);
+    }
+
+    if (!/"\/_webm\/\*"/.test(text)) {
+      const list = text.match(/("run_worker_first"\s*:\s*\[)([^\]]*)(\])/);
+      if (list) {
+        const items = list[2]!;
+        const trimmed = items.replace(/[\s,]*$/, '');
+        const trail = items.slice(trimmed.length);
+        const sep = trimmed.trim() ? ', ' : '';
+        text = text.replace(list[0], `${list[1]}${trimmed}${sep}"/_webm/*"${trail}${list[3]}`);
+        changes.push('wrangler.jsonc: "/_webm/*" in run_worker_first, for the page-view beacon');
+      } else {
+        changes.push(
+          'wrangler.jsonc: no run_worker_first array found - add "/_webm/*" to it by hand, or ' +
+            'the beacon 404s in a browser',
+        );
+      }
+    }
+
+    if (text !== before) writeFileSync(wranglerPath, text);
+  }
+
+  if (site.features?.analytics !== true) {
+    site.features = { ...(site.features ?? {}), analytics: true };
+    writeFileSync(sitePath, JSON.stringify(site, null, 2) + '\n');
+    changes.push('webmonterey.json: features.analytics on');
+  }
+  return changes;
+}
+
+function safeSlug(domain: string): string | null {
+  try {
+    return slugFor(domain);
+  } catch {
+    return null;
+  }
+}
+
 const WEBMASTER_CTA: Codemod = {
   version: '1.6.0',
-  title: 'The /webmaster button spreads AGENCY_CTA_ATTRS',
+  title: 'The /webmaster button spreads AGENCY_CTA_ATTRS; analytics on',
   run(siteRoot) {
+    return [...webmasterCta(siteRoot), ...enableAnalytics(siteRoot)];
+  },
+};
+
+function webmasterCta(siteRoot: string): string[] {
+  {
     const registryPath = join(siteRoot, 'src/components/registry.ts');
     if (!existsSync(registryPath)) return [];
     const relative = webmasterPagePath(readFileSync(registryPath, 'utf8'));
@@ -93,8 +186,8 @@ const WEBMASTER_CTA: Codemod = {
     return [
       `src/components/${relative}: the button spreads AGENCY_CTA_ATTRS (the 25px floor above it)`,
     ];
-  },
-};
+  }
+}
 
 export const CODEMODS: Codemod[] = [WEBMASTER_CTA];
 

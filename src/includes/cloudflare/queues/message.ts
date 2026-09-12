@@ -71,15 +71,21 @@ export interface SubscribeMessage {
   hostname: string | null;
 }
 
-/** One batch of a campaign, up to 1,000 recipients, retried alone and idempotent per batch. */
+/**
+ * One batch of a campaign: the campaign and an id RANGE, not the recipients and not the body.
+ * A thousand addresses alone is ~120 KB against the queue's 128 KB, and the HTML would have
+ * pushed every real campaign past it - which the size check caught by sending inline, silently
+ * losing the per-batch retry for exactly the sends that need it. The consumer reads the body and
+ * the rows back from the campaign row; a few hundred bytes, retried alone, idempotent per batch.
+ */
 export interface CampaignBatchMessage {
   kind: 'campaign.batch';
   campaignId: number;
   batch: number;
-  subject: string;
-  text: string;
-  html: string;
-  recipients: Array<{ email: string; name: string | null; token: string }>;
+  /** Subscriber ids after this one... */
+  fromId: number;
+  /** ...up to and including this one, re-read with the campaign's own audience query. */
+  toId: number;
   hostname: string | null;
 }
 

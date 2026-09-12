@@ -73,3 +73,75 @@ test('a site with no webmasterPage export, or no registry, is left alone', () =>
   assert.deepEqual(codemod.run(site(`export const blocks = {};\n`)), []);
   assert.deepEqual(codemod.run(mkdtempSync(join(tmpdir(), 'webm-codemod-'))), []);
 });
+
+const OLD_WRANGLER = `{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "acme",
+  "compatibility_date": "2026-08-01",
+  "assets": {
+    "directory": "./dist/client",
+    // BOTH SLASH FORMS.
+    "run_worker_first": ["/_actions/*", "/portal/*", "/portal", "/portal/"]
+  },
+  "observability": { "enabled": true },
+  "workers_dev": true
+}
+`;
+
+function oldSite(): string {
+  const root = mkdtempSync(join(tmpdir(), 'webm-codemod-'));
+  writeFileSync(join(root, 'wrangler.jsonc'), OLD_WRANGLER);
+  writeFileSync(
+    join(root, 'webmonterey.json'),
+    JSON.stringify(
+      {
+        '//client': 'x',
+        client: 'Acme',
+        domain: 'acme.com',
+        features: { compliance: true, d1: true },
+      },
+      null,
+      2,
+    ) + '\n',
+  );
+  return root;
+}
+
+test('analytics is switched on for a 1.5 site: the binding above observability, the route, the flag', () => {
+  const root = oldSite();
+  const changes = codemod.run(root);
+  assert.equal(changes.length, 3, changes.join('; '));
+  const wrangler = readFileSync(join(root, 'wrangler.jsonc'), 'utf8');
+  assert.match(
+    wrangler,
+    /"analytics_engine_datasets": \[\{ "binding": "ANALYTICS", "dataset": "acme" \}\],\n\n  "observability"/,
+  );
+  assert.match(
+    wrangler,
+    /"run_worker_first": \["\/_actions\/\*", "\/portal\/\*", "\/portal", "\/portal\/", "\/_webm\/\*"\]/,
+  );
+  assert.match(wrangler, /\/\/ BOTH SLASH FORMS\./, "the site's comments survive: edited as text");
+  const site = JSON.parse(readFileSync(join(root, 'webmonterey.json'), 'utf8'));
+  assert.equal(site.features.analytics, true);
+  assert.equal(site.features.d1, true);
+  assert.equal(Object.keys(site)[0], '//client', 'key order kept');
+  assert.deepEqual(codemod.run(root), [], 'idempotent');
+});
+
+test('a multi-line run_worker_first array gets the route inside it', () => {
+  const root = oldSite();
+  writeFileSync(
+    join(root, 'wrangler.jsonc'),
+    OLD_WRANGLER.replace(
+      '"run_worker_first": ["/_actions/*", "/portal/*", "/portal", "/portal/"]',
+      '"run_worker_first": [\n      "/_actions/*",\n      "/contact",\n    ]',
+    ),
+  );
+  codemod.run(root);
+  const wrangler = readFileSync(join(root, 'wrangler.jsonc'), 'utf8');
+  assert.match(
+    wrangler,
+    /"\/contact", "\/_webm\/\*",?\n    \]/,
+    'inside the array, the trailing comma kept',
+  );
+});

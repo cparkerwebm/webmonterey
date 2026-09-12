@@ -54,14 +54,23 @@ CREATE TABLE IF NOT EXISTS subscribers (
 CREATE INDEX IF NOT EXISTS idx_subscribers_status ON subscribers (status, id);
 
 -- What each campaign sent, so a send is idempotent per batch and the client has a history.
+-- THE BODY LIVES HERE, not in the queue: a batch message names the campaign and an id range and
+-- is a few hundred bytes, whatever the HTML weighs, so every batch fits the queue and is retried
+-- on its own. The consumer reads the body and its 1,000 rows back from this database.
 CREATE TABLE IF NOT EXISTS campaigns (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   -- The site's own key for the campaign, e.g. '2026-10-newsletter'. One row per key.
   key           TEXT    NOT NULL UNIQUE,
   subject       TEXT    NOT NULL,
-  -- How the audience was chosen: the WHERE fragment, for the record.
-  audience      TEXT,
+  -- Both parts, footer included, exactly as sent.
+  text          TEXT    NOT NULL,
+  html          TEXT    NOT NULL,
+  -- How the audience was chosen: the WHERE fragment and its parameters as JSON, for the record
+  -- and for the consumer, which re-runs the same query over each batch's id range.
+  audience_where  TEXT,
+  audience_params TEXT    NOT NULL DEFAULT '[]',
   recipients    INTEGER NOT NULL DEFAULT 0,
+  batches       INTEGER NOT NULL DEFAULT 0,
   started_at    TEXT    NOT NULL DEFAULT (datetime('now')),
   completed_at  TEXT
 );

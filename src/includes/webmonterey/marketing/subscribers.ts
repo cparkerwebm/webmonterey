@@ -166,40 +166,87 @@ export interface Recipient {
 }
 
 /**
- * One page of the audience: subscribed rows, in id order, after `after`, up to `limit`. `where`
- * is the site's own segment - a SQL fragment over this table's columns, with its params - and
- * is ANDed with the status; a segment cannot widen the audience past subscribed.
+ * One page of the audience: subscribed rows, in id order, after `after`, up to `limit` - or up
+ * to and including `to`, for a batch re-reading its range. `where` is the site's own segment - a
+ * SQL fragment over this table's columns, with its params - and is ANDed with the status; a
+ * segment cannot widen the audience past subscribed. A row that unsubscribed between the
+ * campaign starting and its batch sending is not in the range any more, which is the point of
+ * re-reading rather than carrying addresses.
  */
 export async function audiencePage(
   db: D1Database,
-  options: { where?: string; params?: unknown[]; after?: number; limit?: number } = {},
+  options: { where?: string; params?: unknown[]; after?: number; to?: number; limit?: number } = {},
 ): Promise<Recipient[]> {
   const extra = options.where ? ` AND (${options.where})` : '';
+  const upper = options.to === undefined ? '' : ' AND id <= ?';
   return all<Recipient>(
     db,
     `SELECT id, email, name, token, vars FROM subscribers
-      WHERE status = 'subscribed' AND id > ?${extra}
+      WHERE status = 'subscribed' AND id > ?${upper}${extra}
       ORDER BY id LIMIT ?`,
     options.after ?? 0,
+    ...(options.to === undefined ? [] : [options.to]),
     ...(options.params ?? []),
     options.limit ?? 1000,
   );
 }
 
-/** A campaign row, created once per key; the id comes back on every call. */
+export interface CampaignRow {
+  id: number;
+  subject: string;
+  text: string;
+  html: string;
+  audience_where: string | null;
+  audience_params: string;
+}
+
+/**
+ * A campaign row, created once per key with its body and audience; the id comes back on every
+ * call. Sending the same key again sends nothing twice: the batches remember.
+ */
 export async function recordCampaign(
   db: D1Database,
-  input: { key: string; subject: string; audience?: string },
+  input: {
+    key: string;
+    subject: string;
+    text: string;
+    html: string;
+    where?: string;
+    params?: unknown[];
+  },
 ): Promise<number> {
   await run(
     db,
-    `INSERT OR IGNORE INTO campaigns (key, subject, audience) VALUES (?, ?, ?)`,
+    `INSERT OR IGNORE INTO campaigns (key, subject, text, html, audience_where, audience_params)
+     VALUES (?, ?, ?, ?, ?, ?)`,
     input.key,
     input.subject,
-    input.audience ?? null,
+    input.text,
+    input.html,
+    input.where ?? null,
+    JSON.stringify(input.params ?? []),
   );
   const row = await first<{ id: number }>(db, `SELECT id FROM campaigns WHERE key = ?`, input.key);
   return row!.id;
+}
+
+/** The campaign a batch belongs to, or null when the id is not one - a message from a dropped row. */
+export async function campaignById(db: D1Database, id: number): Promise<CampaignRow | null> {
+  return first<CampaignRow>(
+    db,
+    `SELECT id, subject, text, html, audience_where, audience_params FROM campaigns WHERE id = ?`,
+    id,
+  );
+}
+
+/** Once every batch is out. */
+export async function completeCampaign(db: D1Database, id: number, batches: number): Promise<void> {
+  await run(
+    db,
+    `UPDATE campaigns SET batches = ?, completed_at = datetime('now') WHERE id = ?`,
+    batches,
+    id,
+  );
 }
 
 /** Whether a batch of a campaign was already sent - the idempotency the queue's retries need. */
