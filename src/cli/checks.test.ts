@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CHECKS, onDemandRoutes, type CheckContext } from './checks.ts';
+import {
+  CHECKS,
+  onDemandRoutes,
+  PACKAGE_SECRETS,
+  stripComments,
+  type CheckContext,
+} from './checks.ts';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { MCP_NAMES, MCP_SERVERS, mcpConfig } from './mcp.ts';
 
 const base = (over: Partial<CheckContext> = {}): CheckContext => ({
@@ -813,7 +822,7 @@ test('a mode-read secret read with plain getBinding elsewhere, or listed without
     base({ includes, devVarsExample: `# STRIPE_SECRET_KEY=\n# MAILGUN_API_KEY=\n` }),
   );
   assert.equal(twinless.status, 'warn');
-  assert.match(twinless.detail!, /lists STRIPE_SECRET_KEY but not STRIPE_SECRET_KEY_TEST/);
+  assert.match(twinless.detail!, /lists STRIPE_SECRET_KEY but STRIPE_SECRET_KEY_TEST is neither/);
 });
 
 test('a consistent mode-read secret passes, and a site using no mode helper is silent', () => {
@@ -827,6 +836,101 @@ test('a consistent mode-read secret passes, and a site using no mode helper is s
   });
   assert.equal(runCheck('binding-modes', ok).status, 'pass');
   assert.equal(runCheck('binding-modes', base()).status, 'pass');
+});
+
+test('getSecret is a spelling of the same read: plain in one file, ForMode in another, warns', () => {
+  const includes = new Map([
+    ['src/includes/pay.ts', `const k = await getSecretForMode('STRIPE_SECRET_KEY', host);`],
+  ]);
+  const actions = new Map([['src/actions/index.ts', `await getSecret('STRIPE_SECRET_KEY_TEST')`]]);
+  const r = runCheck('binding-modes', base({ includes, actions }));
+  assert.equal(r.status, 'warn');
+  assert.match(r.detail!, /STRIPE_SECRET_KEY_TEST is read with plain getSecret in src\/actions/);
+});
+
+test('a _TEST twin bound through secrets_store_secrets satisfies the twin check', () => {
+  const includes = new Map([
+    ['src/includes/pay.ts', `await getSecretForMode('STRIPE_SECRET_KEY', host)`],
+  ]);
+  const store = [
+    { binding: 'STRIPE_SECRET_KEY_TEST', store_id: 'abc', secret_name: 'STRIPE_SECRET_KEY_TEST' },
+  ];
+  const ctx = base({
+    includes,
+    devVarsExample: `# STRIPE_SECRET_KEY=\n`,
+    wrangler: { secrets_store_secrets: store },
+  });
+  assert.equal(runCheck('binding-modes', ctx).status, 'pass');
+  assert.equal(
+    runCheck('binding-modes', { ...ctx, wrangler: {} }).status,
+    'warn',
+    'the same site without the store binding is the twinless case',
+  );
+});
+
+test('a secrets_store_secrets binding nothing reads warns; one the site or the package reads passes', () => {
+  const bound = (...names: string[]) => ({
+    secrets_store_secrets: names.map((binding) => ({
+      binding,
+      store_id: 'abc',
+      secret_name: binding,
+    })),
+  });
+  const unread = runCheck(
+    'binding-modes',
+    base({ wrangler: bound('MAILGUN_WEBHOOK_SIGNING_KEY', 'STRIPE_KEY') }),
+  );
+  assert.equal(unread.status, 'warn');
+  assert.match(
+    unread.detail!,
+    /binds STRIPE_KEY through secrets_store_secrets but nothing reads it/,
+  );
+  assert.doesNotMatch(unread.detail!, /MAILGUN_WEBHOOK_SIGNING_KEY/, 'the package reads that one');
+
+  const siteReads = base({
+    wrangler: bound('STRIPE_SECRET_KEY', 'STRIPE_SECRET_KEY_TEST', 'MAPS_KEY'),
+    includes: new Map([
+      [
+        'src/includes/pay.ts',
+        `await getSecretForMode('STRIPE_SECRET_KEY', host); hasBinding('MAPS_KEY');`,
+      ],
+    ]),
+  });
+  assert.equal(runCheck('binding-modes', siteReads).status, 'pass');
+
+  const nameMismatch = runCheck(
+    'binding-modes',
+    base({ wrangler: bound('MAILGUN_WEBHOOK_KEY'), includes: new Map() }),
+  );
+  assert.equal(nameMismatch.status, 'warn', 'the store name is not the name the code reads');
+});
+
+test('PACKAGE_SECRETS is exactly what the package source reads with getSecret', () => {
+  /*
+   * The list is hard-coded in checks.ts because the checks must stay a pure function of their
+   * context; this is what keeps it honest. Every getSecret / getSecretForMode call in the
+   * package's non-test source, the ForMode ones in both spellings.
+   */
+  const src = fileURLToPath(new URL('../', import.meta.url));
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (/\.(ts|astro)$/.test(entry) && !/\.test\.ts$/.test(entry)) files.push(full);
+    }
+  };
+  walk(src);
+  const read = new Set<string>();
+  for (const file of files) {
+    /* Comments stripped: env.ts documents the helpers with a Stripe example nothing reads. */
+    const source = stripComments(readFileSync(file, 'utf8'));
+    for (const m of source.matchAll(/\bgetSecret\s*\(\s*['"]([A-Z0-9_]+)['"]/g)) read.add(m[1]!);
+    for (const m of source.matchAll(/\bgetSecretForMode\s*\(\s*['"]([A-Z0-9_]+)['"]/g)) {
+      read.add(m[1]!).add(`${m[1]!}_TEST`);
+    }
+  }
+  assert.deepEqual([...read].sort(), [...PACKAGE_SECRETS].sort());
 });
 
 test('features.queue needs a producer bound as QUEUE, a consumer for the same queue, and a handler', () => {

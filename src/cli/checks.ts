@@ -40,6 +40,7 @@ export interface CheckContext {
       consumers?: Array<{ queue?: string; dead_letter_queue?: string }>;
     };
     analytics_engine_datasets?: Array<{ binding?: string; dataset?: string }>;
+    secrets_store_secrets?: Array<{ binding?: string; store_id?: string; secret_name?: string }>;
   } | null;
   /** Source of the custom Worker entrypoint named by wrangler `main`, or null. */
   workerEntry: string | null;
@@ -146,6 +147,24 @@ export function onDemandRoutes(pages: Map<string, string>): string[] {
  * package gains another, it goes here, and the test below is what notices.
  */
 const PACKAGE_ACTIONS = ['submitForm'];
+
+/**
+ * Secret names the PACKAGE reads, in every spelling it reads them - the mode-read pair in both.
+ * A site's own source never mentions these, so without this list a Secrets Store binding for
+ * the Mailgun webhook signing key would be reported as read by nothing. Hard-coded for the same
+ * reason as PACKAGE_ACTIONS; the test scans the package's own source for getSecret calls and
+ * fails when this list drifts from it.
+ */
+export const PACKAGE_SECRETS = [
+  'MAILGUN_API_KEY',
+  'MAILGUN_DOMAIN',
+  'MAILGUN_MKTG_API_KEY',
+  'MAILGUN_MKTG_API_KEY_TEST',
+  'MAILGUN_MKTG_DOMAIN',
+  'MAILGUN_MKTG_DOMAIN_TEST',
+  'MAILGUN_WEBHOOK_SIGNING_KEY',
+  'TURNSTILE_SECRET_KEY',
+];
 
 /** `actions.<name>` used in files that actually import astro:actions. */
 export function actionsCalled(sources: Map<string, string>): Map<string, string[]> {
@@ -871,18 +890,22 @@ export const CHECKS: Check[] = [
   },
   {
     id: 'binding-modes',
-    title: 'A secret read in two modes is read in two modes everywhere',
+    title: 'Every secret is read the way it is bound, in the mode it is bound',
     silentAs:
-      'one mode is unconfigured: the staging site reads a live key, or the launched site reads a test one',
+      'one mode is unconfigured - the staging site reads a live key, or the launched site reads a test one - or a Secrets Store binding sits on the Worker that nothing reads',
     run(ctx) {
       /*
        * Source-level, and that is its limit: secret values cannot be read back from wrangler, so
-       * this checks what the code EXPECTS, never what is set on the Worker. Two disagreements
-       * are visible in source. A name read through getBindingForMode in one file and through
-       * plain getBinding - in either spelling - in another bypasses the selection in the second
-       * place. And a mode-read name listed in .dev.vars.example without its _TEST twin means the
-       * next session copies the example and local dev, which is a staging deployment, reads a
-       * secret that is not there.
+       * this checks what the code EXPECTS against what wrangler.jsonc DECLARES, never what is set
+       * on the Worker. Three disagreements are visible from here. A name read through a ForMode
+       * helper in one file and through the plain one - getBinding or getSecret, in either
+       * spelling - in another bypasses the selection in the second place. A mode-read name
+       * listed in .dev.vars.example without its _TEST twin, and no twin bound from the Secrets
+       * Store either, means the next session copies the example and local dev, which is a
+       * staging deployment, reads a secret that is not there. And a secrets_store_secrets entry
+       * whose binding name nothing reads - not the site, not the package - is a typo or a
+       * leftover: the secret it names is bound to the Worker for no one, and the name the code
+       * does read is still missing.
        */
       const sources = [ctx.actions, ctx.includes, ctx.pages, ctx.components, ctx.emails]
         .flatMap((m) => [...m.entries()])
@@ -890,33 +913,42 @@ export const CHECKS: Check[] = [
       if (ctx.workerEntry) sources.push(['worker entry', stripComments(ctx.workerEntry)]);
 
       const moded = new Map<string, string>();
-      const plain = new Map<string, string[]>();
+      const plain = new Map<string, Array<{ file: string; helper: string }>>();
       for (const [file, src] of sources) {
         for (const m of src.matchAll(
-          /\b(?:get|has)BindingForMode\s*(?:<[^>]*>)?\s*\(\s*['"]([A-Z0-9_]+)['"]/g,
+          /\b(?:get|has)(?:Binding|Secret)ForMode\s*(?:<[^>]*>)?\s*\(\s*['"]([A-Z0-9_]+)['"]/g,
         )) {
           if (!moded.has(m[1]!)) moded.set(m[1]!, file);
         }
         for (const m of src.matchAll(
-          /\b(?:get|has)Binding\s*(?:<[^>]*>)?\s*\(\s*['"]([A-Z0-9_]+)['"]/g,
+          /\b((?:get|has)(?:Binding|Secret))\s*(?:<[^>]*>)?\s*\(\s*['"]([A-Z0-9_]+)['"]/g,
         )) {
-          plain.set(m[1]!, [...(plain.get(m[1]!) ?? []), file]);
+          plain.set(m[2]!, [...(plain.get(m[2]!) ?? []), { file, helper: m[1]! }]);
         }
       }
-      if (moded.size === 0) return pass;
 
       const problems: string[] = [];
       for (const [name, file] of moded) {
         for (const spelling of [name, `${name}_TEST`]) {
-          const files = plain.get(spelling);
-          if (files) {
+          const reads = plain.get(spelling);
+          if (reads) {
             problems.push(
-              `${spelling} is read with plain getBinding in ${files[0]} but ${name} is read ` +
-                `through getBindingForMode in ${file} - the first ignores the mode`,
+              `${spelling} is read with plain ${reads[0]!.helper} in ${reads[0]!.file} but ` +
+                `${name} is read through the ForMode helper in ${file} - the first ignores the mode`,
             );
           }
         }
       }
+
+      /*
+       * The Secrets Store side: the binding name is what env exposes and what the code reads;
+       * secret_name is the store's name for it and may differ.
+       */
+      const storeBound = new Set(
+        (ctx.wrangler?.secrets_store_secrets ?? [])
+          .map((entry) => entry.binding)
+          .filter((name): name is string => typeof name === 'string' && name.length > 0),
+      );
 
       const example = ctx.devVarsExample;
       if (example !== null) {
@@ -924,10 +956,25 @@ export const CHECKS: Check[] = [
           [...example.matchAll(/^\s*#?\s*([A-Z0-9_]+)\s*=/gm)].map((m) => m[1]!),
         );
         for (const name of moded.keys()) {
-          if (listed.has(name) && !listed.has(`${name}_TEST`)) {
+          const twin = `${name}_TEST`;
+          if (listed.has(name) && !listed.has(twin) && !storeBound.has(twin)) {
             problems.push(
-              `.dev.vars.example lists ${name} but not ${name}_TEST - local dev is a staging ` +
-                `deployment and reads the _TEST value`,
+              `.dev.vars.example lists ${name} but ${twin} is neither there nor bound through ` +
+                `secrets_store_secrets - local dev is a staging deployment and reads the _TEST value`,
+            );
+          }
+        }
+      }
+
+      if (storeBound.size) {
+        const read = new Set<string>([...PACKAGE_SECRETS, ...plain.keys()]);
+        for (const name of moded.keys()) read.add(name).add(`${name}_TEST`);
+        for (const name of storeBound) {
+          if (!read.has(name)) {
+            problems.push(
+              `wrangler.jsonc binds ${name} through secrets_store_secrets but nothing reads it - ` +
+                `a binding name that does not match the name the code reads, or a secret the site ` +
+                `no longer uses`,
             );
           }
         }

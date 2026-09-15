@@ -414,13 +414,17 @@ export function scaffold(options: ScaffoldOptions): Record<string, string> {
 
   files['.gitignore'] =
     `node_modules/\ndist/\n.astro/\n.wrangler/\nworker-configuration.d.ts\n.DS_Store\n\n` +
-    `# Secrets. Never committed, never uploaded - wrangler secret put is the only path.\n` +
+    `# Secrets. Never committed, never uploaded - wrangler secret put or the Secrets Store is the path.\n` +
     `.dev.vars\n.dev.vars.*\n.env\n.env.*\n\n` +
     `# Refused by preinstall; here as belt and braces.\npnpm-lock.yaml\nyarn.lock\nbun.lock*\n`;
 
   files['.dev.vars.example'] =
     `# Copy to .dev.vars for local development. NEVER commit .dev.vars.\n` +
-    `# Anything here must also exist as a real Worker secret - \`wrangler secret put\`.\n` +
+    `# Anything here must also exist as a real Worker secret - \`wrangler secret put\` - unless the\n` +
+    `# site binds that name from the account's Secrets Store (secrets_store_secrets in wrangler.jsonc),\n` +
+    `# in which case local dev reads a LOCAL copy made with \`wrangler secrets-store secret create\`\n` +
+    `# (no --remote) and this file is not consulted for it. The code reads a secret the same way\n` +
+    `# whichever it is: getSecret(name). See /webm:launch, production secrets.\n` +
     `# Record each one in the password manager as you create it: wrangler cannot read a secret back.\n\n` +
     `# TURNSTILE_SECRET_KEY=\n` +
     `# MAILGUN_API_KEY=\n` +
@@ -438,7 +442,8 @@ export function scaffold(options: ScaffoldOptions): Record<string, string> {
     `# MARKETING MAIL (features.marketing), for the select sites that have it. Campaigns send from\n` +
     `# mktg.<domain> through a Mailgun DOMAIN SENDING KEY - it can do nothing but send - and the\n` +
     `# pair below has a _TEST twin pointing at a Mailgun sandbox domain, read on staging and here.\n` +
-    `# The signing key verifies Mailgun's webhook; it is one value per Mailgun account.\n` +
+    `# The signing key verifies Mailgun's webhook; it is one value per Mailgun account, which makes\n` +
+    `# it the first candidate for the Secrets Store rather than a secret on every Worker.\n` +
     `# MAILGUN_MKTG_API_KEY_TEST=\n` +
     `# MAILGUN_MKTG_DOMAIN_TEST=\n` +
     `# MAILGUN_WEBHOOK_SIGNING_KEY=\n`;

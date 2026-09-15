@@ -194,6 +194,14 @@ removing `worker-configuration.d.ts` from tsconfig — that is what types the bi
 **Bindings are unavailable on prerendered routes.** Any route touching `env.DB` needs
 `export const prerender = false`.
 
+**A secret is read with `getSecret`, never `getBinding<string>`.** A name bound from the account's
+Secrets Store (`secrets_store_secrets` in `wrangler.jsonc`) arrives on `env` as an object with a
+`get()`, not a string, and `getBinding<string>` asserts rather than converts: the provider gets
+`[object Object]` as the key and answers 401, and nothing names the cause. `await getSecret(name)`
+returns the string whichever way the name is bound. Locally a store-bound name is read from the
+local store, not `.dev.vars` - create the copy with `wrangler secrets-store secret create` and no
+`--remote`.
+
 **`import.meta.env` is NOT the workaround for that.** Both `.env` and `.dev.vars` populate it
 server-side at build time, so on a prerendered route the secret is written **into
 `dist/client/*.html`**, which Cloudflare serves publicly. A local `npm run build` before

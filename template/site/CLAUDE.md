@@ -121,6 +121,17 @@ const { results } = await env.DB.prepare('SELECT 1').run();
 
 Request metadata is `Astro.request.cf`. The execution context is `Astro.locals.cfContext`.
 
+A secret - a key, not a resource - is read with `getSecret`, which is async because the same
+name may be a Worker secret (`wrangler secret put`, a string) or bound from the account's Secrets
+Store (`secrets_store_secrets` in `wrangler.jsonc`, an object read with `get()`), and the code
+must not care which. `getSecretForMode(name, hostname)` for a secret with a live and a `_TEST`
+value. `getBinding` stays for resources: D1, a queue, a dataset.
+
+```ts
+import { getSecret } from '@cparkerwebm/webmonterey/cloudflare/workers';
+const key = await getSecret('STRIPE_SECRET_KEY');
+```
+
 ### 7. Content edits happen on a branch
 
 Never edit page JSON directly on `main`. Branch, edit, push — Workers Builds gives the branch

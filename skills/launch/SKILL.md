@@ -164,8 +164,58 @@ npx wrangler secret put STRIPE_SECRET_KEY         # live
 npx wrangler secret put STRIPE_SECRET_KEY_TEST    # sandbox
 ```
 
-`webm doctor` warns when a mode-read secret is read with plain `getBinding` elsewhere, or is
-listed in `.dev.vars.example` without its `_TEST` twin.
+`webm doctor` warns when a mode-read secret is read with plain `getSecret` or `getBinding`
+elsewhere, or is listed in `.dev.vars.example` without its `_TEST` twin.
+
+**An account-wide key goes in the Secrets Store, not on every Worker.** A value that is one per
+account rather than one per site - the Mailgun webhook signing key first; a Stripe key a fleet
+shares; anything you would otherwise `secret put` on six Workers and rotate on six Workers - is
+created once in the account's Secrets Store and bound to each Worker that reads it. The code is
+the same either way: every secret in the package is read with `getSecret('<NAME>')` (or
+`getSecretForMode`), which returns the string whether the name is a Worker secret or a store
+binding, and a site's own code reads its secrets the same way. Which way a given secret is bound
+is a per-secret decision made in `wrangler.jsonc`, never in code.
+
+```sh
+npx wrangler secrets-store store list --remote     # the account's store and its id
+npx wrangler secrets-store secret create <store-id> --name MAILGUN_WEBHOOK_SIGNING_KEY --scopes workers --remote
+```
+
+It prompts for the value; never pass `--value` for a real key, it stays in the shell history.
+Then bind it, under the name the code reads - `binding` is what `env` exposes, `secret_name` is
+the store's name for it, and only the first has to match the code:
+
+```jsonc
+"secrets_store_secrets": [
+  { "binding": "MAILGUN_WEBHOOK_SIGNING_KEY", "store_id": "<store-id>", "secret_name": "MAILGUN_WEBHOOK_SIGNING_KEY" }
+]
+```
+
+Two things follow, and each fails in a way that names nothing:
+
+- **Local dev reads a LOCAL copy, not the account's store.** `wrangler dev` cannot reach the
+  remote store, and `.dev.vars` does not stand in for a name bound this way. Create the local
+  copy once per checkout with the same command **without `--remote`** - it lands in
+  `.wrangler/state`, which is ignored - and put the value in the password manager entry so the
+  next person can:
+
+  ```sh
+  npx wrangler secrets-store secret create <store-id> --name MAILGUN_WEBHOOK_SIGNING_KEY --scopes workers
+  ```
+
+  Without it the binding exists and `get()` throws; the package's error names this command.
+
+- **Workers Builds needs an API token with Secrets Store Edit.** The token Workers Builds
+  generates for itself has Workers Scripts, KV, R2 and routes - not Secrets Store - and binding a
+  store secret at deploy time needs **Account → Secrets Store → Edit** (Edit, not Read: read
+  cannot bind). The push after adding the block fails with an authorization error and the site
+  stays on the previous deploy. Create a token with the default Workers Builds permissions plus
+  that one, and select it on the Worker under **Settings → Builds → Build configuration → API
+  token**. Once per account is enough if every site uses the same token.
+
+`webm doctor` counts a name bound through `secrets_store_secrets` as set - for the `_TEST` twin
+too - and warns on a store binding whose name nothing reads, which is what a typo in `binding`
+looks like.
 
 Public values - the Turnstile site key, a GTM container id - are not secrets. They go in
 `vars` in `wrangler.jsonc` or `gtmId` in `webmonterey.json`, and are committed.
@@ -262,7 +312,9 @@ format`. Set `features.marketing: true`, run `npx webm sync` - it seeds `migrati
 4. **Keys.** A domain sending key for `mktg.<domain>` - it can do nothing but send, which is
    all the site needs - as `MAILGUN_MKTG_API_KEY`, with `MAILGUN_MKTG_DOMAIN`; and the `_TEST`
    twins pointing at a Mailgun sandbox domain. The account's webhook signing key as
-   `MAILGUN_WEBHOOK_SIGNING_KEY`. Record each in the password manager.
+   `MAILGUN_WEBHOOK_SIGNING_KEY` - it is one value for every site on the Mailgun account, so
+   bind it from the Secrets Store (step 6) rather than putting it on each Worker. Record each
+   in the password manager.
 5. **The webhook.** In Mailgun, on the marketing domain: the `unsubscribed`, `complained` and
    `permanent_fail` events to `https://<domain>/_webm/mailgun`. That is how a person who used
    the header unsubscribe, complained, or bounced leaves the site's list.

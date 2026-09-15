@@ -337,6 +337,28 @@ name read in both styles, and `.dev.vars.example` listing a mode-read name witho
 Nothing service-specific ships here; the first site to need it had the Stripe version in a file
 of its own, and that file is now two calls.
 
+### A secret is read the same way however it is bound
+
+Cloudflare has two places a secret can live. A Worker secret (`wrangler secret put`) is one
+value on one Worker, and arrives on `env` as a string. A Secrets Store secret is one value on the
+account, bound to any Worker that needs it under `secrets_store_secrets` in `wrangler.jsonc`,
+and arrives as an object whose `get()` is awaited. The second is right for anything that is one
+per account rather than one per site - the Mailgun webhook signing key, a Stripe key a fleet
+shares - because rotating it is one edit rather than one `secret put` per Worker, and wrong for
+a per-site key that would then need a per-site name in a shared namespace. So a site chooses
+per secret, and the package must not care which it chose: every secret read in the package goes
+through `getSecret(name)` (and `getSecretForMode` for a live/test pair), which returns the string
+either way and is async for that reason. `getBinding` stays synchronous for resources - D1, a
+queue, a dataset - and refuses nothing; `hasBinding` counts a store binding as present. The
+selection is in `workers/secret.ts` with no `cloudflare:workers` import, so it is tested; `env.ts`
+binds it to the real `env`. What a site gives up locally is `.dev.vars` for that name: `wrangler
+dev` reads a local copy created with `wrangler secrets-store secret create` without `--remote`,
+and the package's error for a store binding with nothing behind it names that command. `webm
+doctor` counts a name bound through the store as set, `_TEST` twin included, and warns on a store
+binding whose name nothing reads - the package's own secret names are listed in the checks for
+that, and a test holds the list to the source. Workers Builds' generated token cannot bind a store
+secret; the launch skill says which permission to add.
+
 ### Analytics: the site writes, the platform reads
 
 Every site with `features.analytics` writes to a Workers Analytics Engine dataset named for its
@@ -537,3 +559,4 @@ a page.
 | 29 | Analytics: the site writes a slug-named dataset under one fleet-wide column contract; the platform reads; nothing identifying is written | 8 |
 | 30 | The marketing list is the site's own second D1 database; Mailgun only sends, through a domain sending key | 8 |
 | 31 | Confirmed opt-in always, provenance on every row, and a provider suppression is never undone by a form | 8 |
+| 32 | A secret is read with `getSecret` whether it is a Worker secret or a Secrets Store binding; the site chooses per secret in `wrangler.jsonc` | 8 |

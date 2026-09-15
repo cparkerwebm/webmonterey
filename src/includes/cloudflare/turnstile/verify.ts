@@ -81,7 +81,7 @@ export interface VerifyOptions {
  *     let result;
  *     try {
  *       result = await verifyTurnstile({
- *         secretKey: getBinding<string>('TURNSTILE_SECRET_KEY'),
+ *         secretKey: await getSecret('TURNSTILE_SECRET_KEY'),
  *         token: String(form.get(TURNSTILE_FIELD) ?? ''),
  *         expectedHostname: Astro.url.hostname,
  *         remoteIp: request.headers.get('CF-Connecting-IP'),

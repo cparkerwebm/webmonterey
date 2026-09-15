@@ -11,7 +11,7 @@
  * since a consumer has no request to read it from.
  */
 import { run } from '../../cloudflare/d1/client.ts';
-import { getBinding } from '../../cloudflare/workers/env.ts';
+import { getBinding, getSecret } from '../../cloudflare/workers/env.ts';
 import { sendEmail } from '../../sinch/mailgun/send.ts';
 import { renderHtml, renderText } from '../../../emails/submission-notification.ts';
 import {
@@ -28,7 +28,7 @@ import type { AutoresponseMessage, NotifyMessage } from '../../cloudflare/queues
  * the query for "anything needing a resend" reads.
  */
 export async function notify(message: NotifyMessage): Promise<void> {
-  const mailgunDomain = getBinding<string>('MAILGUN_DOMAIN');
+  const mailgunDomain = await getSecret('MAILGUN_DOMAIN');
   const started = Date.now();
   try {
     await send();
@@ -45,7 +45,7 @@ export async function notify(message: NotifyMessage): Promise<void> {
 
   async function send() {
     await sendEmail({
-      apiKey: getBinding<string>('MAILGUN_API_KEY'),
+      apiKey: await getSecret('MAILGUN_API_KEY'),
       hostname: message.hostname,
       domain: mailgunDomain,
       /*
@@ -92,7 +92,7 @@ export async function autorespond(message: AutoresponseMessage): Promise<void> {
 }
 
 async function sendAutoresponse(message: AutoresponseMessage): Promise<void> {
-  const mailgunDomain = getBinding<string>('MAILGUN_DOMAIN');
+  const mailgunDomain = await getSecret('MAILGUN_DOMAIN');
   const input = {
     body: message.body,
     fields: message.fields,
@@ -100,7 +100,7 @@ async function sendAutoresponse(message: AutoresponseMessage): Promise<void> {
     domain,
   };
   await sendEmail({
-    apiKey: getBinding<string>('MAILGUN_API_KEY'),
+    apiKey: await getSecret('MAILGUN_API_KEY'),
     hostname: message.hostname,
     domain: mailgunDomain,
     from: `${displayName()} <website@${mailgunDomain}>`,

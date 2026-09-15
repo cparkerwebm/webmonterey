@@ -21,7 +21,7 @@ import { defineAction, ActionError } from 'astro:actions';
 import { z } from 'astro/zod';
 import { copy, fill } from '../includes/webmonterey/copy.ts';
 import { run } from '../includes/cloudflare/d1/client.ts';
-import { getBinding, hasBinding } from '../includes/cloudflare/workers/env.ts';
+import { getBinding, getSecret, hasBinding } from '../includes/cloudflare/workers/env.ts';
 import { TURNSTILE_FIELD, verifyTurnstile } from '../includes/cloudflare/turnstile/verify.ts';
 import { HONEYPOT_FIELD, isHoneypotFilled } from '../includes/webmonterey/forms/honeypot.ts';
 import { autorespond, notify } from '../includes/webmonterey/forms/deliver.ts';
@@ -172,7 +172,7 @@ export const server = {
         let result;
         try {
           result = await verifyTurnstile({
-            secretKey: getBinding<string>('TURNSTILE_SECRET_KEY'),
+            secretKey: await getSecret('TURNSTILE_SECRET_KEY'),
             token: value(TURNSTILE_FIELD),
             expectedHostname: context.url.hostname,
             expectedAction: formId,

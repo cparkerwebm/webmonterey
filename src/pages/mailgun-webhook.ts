@@ -8,7 +8,7 @@
  * subscribed is not an error. 401 for anything not verified, with no look at the body.
  */
 import type { APIRoute } from 'astro';
-import { getBinding } from '../includes/cloudflare/workers/env.ts';
+import { getSecret } from '../includes/cloudflare/workers/env.ts';
 import { classifyEvent, verifyWebhookSignature } from '../includes/sinch/mailgun/webhook.ts';
 import { applyListEvent } from '../includes/webmonterey/marketing/index.ts';
 
@@ -22,7 +22,12 @@ export const POST: APIRoute = async ({ request }) => {
     return new Response(null, { status: 400 });
   }
 
-  const key = getBinding<string>('MAILGUN_WEBHOOK_SIGNING_KEY');
+  /*
+   * The signing key is one value per Mailgun ACCOUNT, so it is the secret a site most often
+   * binds from the account's Secrets Store rather than putting on every Worker; getSecret reads
+   * it either way.
+   */
+  const key = await getSecret('MAILGUN_WEBHOOK_SIGNING_KEY');
   const verified = await verifyWebhookSignature(
     payload.signature as Parameters<typeof verifyWebhookSignature>[0],
     key,

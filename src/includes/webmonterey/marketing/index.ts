@@ -16,7 +16,7 @@
  *
  * Runs in the Worker: everything here reads bindings and the site's config.
  */
-import { getBinding, getBindingForMode } from '../../cloudflare/workers/env.ts';
+import { getBinding, getSecret, getSecretForMode } from '../../cloudflare/workers/env.ts';
 import { sendEmail } from '../../sinch/mailgun/send.ts';
 import { track } from '../../cloudflare/analytics/track.ts';
 import { renderHtml, renderText } from '../../../emails/subscription-confirm.ts';
@@ -72,7 +72,7 @@ export async function subscribe(message: SubscribeMessage): Promise<void> {
   });
   if (result.status !== 'pending') return;
 
-  const mailgunDomain = getBinding<string>('MAILGUN_DOMAIN');
+  const mailgunDomain = await getSecret('MAILGUN_DOMAIN');
   const input = {
     body: personalize(copy.marketing.confirmBody, client),
     button: copy.marketing.confirmButton,
@@ -81,7 +81,7 @@ export async function subscribe(message: SubscribeMessage): Promise<void> {
     domain,
   };
   await sendEmail({
-    apiKey: getBinding<string>('MAILGUN_API_KEY'),
+    apiKey: await getSecret('MAILGUN_API_KEY'),
     hostname: message.hostname,
     domain: mailgunDomain,
     from: `${displayName()} <website@${mailgunDomain}>`,
@@ -235,11 +235,11 @@ export async function sendCampaignBatch(message: CampaignBatchMessage): Promise<
   });
   if (recipients.length === 0) return;
 
-  const mktgDomain = getBindingForMode<string>('MAILGUN_MKTG_DOMAIN', message.hostname);
+  const mktgDomain = await getSecretForMode('MAILGUN_MKTG_DOMAIN', message.hostname);
   const site = origin();
   const started = Date.now();
   const result = await sendEmail({
-    apiKey: getBindingForMode<string>('MAILGUN_MKTG_API_KEY', message.hostname),
+    apiKey: await getSecretForMode('MAILGUN_MKTG_API_KEY', message.hostname),
     hostname: message.hostname,
     domain: mktgDomain,
     from: `${displayName()} <news@${mktgDomain}>`,

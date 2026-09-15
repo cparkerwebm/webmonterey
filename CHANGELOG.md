@@ -11,6 +11,58 @@ build. See `/webm:upgrade`.
 
 ---
 
+## 1.7.0 — 2026-09-15
+
+A release about where a secret lives. Nothing changes for a site on `npm update`: every secret it
+has as a Worker secret is read exactly as before. What it gains is the choice.
+
+### Added
+
+- **Any secret may be bound from the account's Secrets Store instead of put on the Worker, with
+  no code change per secret.** Cloudflare has two places a secret can live: `wrangler secret put`
+  puts one value on one Worker, a string on `env`; the Secrets Store holds one value on the
+  account, bound to any Worker that needs it under `secrets_store_secrets` in `wrangler.jsonc`,
+  an object on `env` whose `get()` is awaited. The package read only the first. Now every secret
+  the package reads - `MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `TURNSTILE_SECRET_KEY`,
+  `MAILGUN_WEBHOOK_SIGNING_KEY`, and the marketing pair through the mode helper - goes through
+  **`getSecret(name)`** and **`getSecretForMode(name, hostname)`**, new on
+  `@cparkerwebm/webmonterey/cloudflare/workers` and async, which return the string whichever way
+  the name is bound. A site's own code - a Stripe key, custom mail - reads its secrets the same
+  way. Which way is a per-secret decision in `wrangler.jsonc`: the Secrets Store for what is one
+  per account (the Mailgun webhook signing key first; a key a fleet shares), a Worker secret for
+  what is one per site. `getBinding` and `getBindingForMode` stay, synchronous, for resources -
+  D1, the queue, the dataset - and `hasBinding` counts a store binding as present. The selection
+  lives in `workers/secret.ts` with no Worker import, so it is unit-tested: a string, a `{ get }`
+  object, a missing binding, and a store binding with nothing behind it, whose error names the
+  local command to run. **Proven both ways** on the example site: a signed Mailgun test event to
+  `/_webm/mailgun` is 200 with the signing key as a Worker secret and 200 again with it bound
+  from a local Secrets Store, and a mis-signed one is 401 in both.
+
+- **`webm doctor`: `binding-modes` knows the store.** A `_TEST` twin bound through
+  `secrets_store_secrets` satisfies the twin check, a name read with `getSecret` counts the same
+  as one read with `getBinding` in both directions of the mode check, and a store binding whose
+  `binding` name nothing reads - not the site's source, not the package - is a warning naming it,
+  which is what a typo in the binding name looks like. The package's own secret names are listed
+  in the checks for that, and a test holds the list to the source.
+
+- **`/webm:launch` documents the Secrets Store path**, under production secrets: the account-wide
+  keys that belong there, the create and bind commands, and the two things that fail silently
+  without it - local dev reads a **local copy** created with `wrangler secrets-store secret
+  create` without `--remote`, since `.dev.vars` does not stand in for a store-bound name; and
+  Workers Builds' generated API token cannot bind a store secret, so the site needs a token with
+  **Account → Secrets Store → Edit** selected under the Worker's build configuration. The
+  scaffold's `.dev.vars.example` and the site's `CLAUDE.md` say the same in a line each.
+
+### Changed
+
+- **A site's own secret reads should move to `getSecret`.** `getBinding<string>('STRIPE_SECRET_KEY')`
+  keeps working for a Worker secret, but a name later bound from the store arrives as an object,
+  and asserting `<string>` on it does not make it one - the mail or payment call gets an object
+  and fails as a 401 from the provider. One search for `getBinding<string>` and `getBindingForMode<string>`
+  is the whole migration; nothing is required today.
+
+---
+
 ## 1.6.2 — 2026-09-12
 
 ### Fixed
