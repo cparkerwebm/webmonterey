@@ -503,7 +503,9 @@ for a site mid-build; failures are for things that are wrong on a launched site.
 - **Codemods are idempotent.** A half-finished upgrade gets re-run.
 - **The package owns the toolchain floor.** One constant names the minimum wrangler a release was
   tested with; the scaffold writes it into a new site and `webm upgrade` raises an old site to it,
-  installing the exact version the adapter's Cloudflare plugin pins so the site ends with one copy.
+  moving the adapter's Cloudflare plugin first when its exact wrangler pin is below the floor and
+  then installing the wrangler it pins, so the site ends with one copy; every copy in the tree is
+  read afterwards and one below the floor is named by its path, never called "at the floor".
   A fleet-wide advisory in miniflare or workerd is fixed by raising the floor once and letting sites
   upgrade, not one lockfile at a time - and never by `npm audit fix`, which differs from site to
   site and cannot be tested once. `webm doctor` warns a site that is below it. Astro stays a peer.

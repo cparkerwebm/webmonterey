@@ -415,10 +415,40 @@ try {
     ],
     site,
   );
+  /*
+   * AND THE PLUGIN SUCH A LOCKFILE RESOLVED: @cloudflare/vite-plugin 1.54.4, which pins wrangler
+   * 4.129.0 exactly. Held there by an override for one install and then released - a stale
+   * lockfile looks exactly like that: the plugin satisfies its range, so npm leaves it. 1.8.0's
+   * step installed the floor at the top and left this copy nested, then said "at the floor".
+   */
   {
-    const pkg = JSON.parse(readFileSync(join(site, 'package.json'), 'utf8'));
+    const pkgPath = join(site, 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+    writeFileSync(
+      pkgPath,
+      JSON.stringify({ ...pkg, overrides: { '@cloudflare/vite-plugin': '1.54.4' } }, null, 2) +
+        '\n',
+    );
+    run('npm', ['install', '--silent', '--ignore-scripts'], site);
     pkg.devDependencies.wrangler = '^4.118.0';
-    writeFileSync(join(site, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
+    writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+    run('npm', ['install', '--silent', '--ignore-scripts'], site);
+    /* The plugin sits at the top or under @astrojs/cloudflare, as npm decides. */
+    const pluginNow = ['node_modules', 'node_modules/@astrojs/cloudflare/node_modules']
+      .map((d) => join(site, d, '@cloudflare/vite-plugin/package.json'))
+      .filter(existsSync)
+      .map((f) => JSON.parse(readFileSync(f, 'utf8')))[0] ?? {
+      version: 'absent',
+      dependencies: {},
+    };
+    const wranglerNow = JSON.parse(
+      readFileSync(join(site, 'node_modules/wrangler/package.json'), 'utf8'),
+    ).version;
+    check(
+      'the 1.5-era site holds the plugin that pins wrangler 4.129.0, and that wrangler',
+      pluginNow.version === '1.54.4' && wranglerNow === '4.129.0',
+      `plugin ${pluginNow.version} pins ${pluginNow.dependencies?.wrangler}; wrangler ${wranglerNow}`,
+    );
   }
   run('git', ['add', '-A'], site);
   run(
@@ -444,6 +474,16 @@ try {
         readFileSync(join(site, 'src/components/general/webmaster-page.astro'), 'utf8'),
       ),
     'the codemod list came from the old process',
+  );
+  check(
+    'the toolchain step moved the plugin first, because its pin was below the floor',
+    /npm update @cloudflare\/vite-plugin: 1\.54\.4 -> 1\.54\.\d+ \(pins wrangler 4\.\d+\.\d+\)/.test(
+      crossText,
+    ),
+    crossText
+      .split('\n')
+      .filter((l) => /vite-plugin/.test(l))
+      .join('\n'),
   );
   check(
     'the toolchain step raised wrangler from the 1.5-era range, and said what moved',

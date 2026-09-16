@@ -11,6 +11,36 @@ build. See `/webm:upgrade`.
 
 ---
 
+## 1.8.1 — 2026-09-15
+
+Two things 1.8.0's first upgrade of a real site showed. Nothing to do beyond `npx webm upgrade`,
+which now finishes the job 1.8.0 reported finished.
+
+### Fixed
+
+- **The toolchain step moves the Cloudflare plugin when its wrangler pin is below the floor, and
+  never says "at the floor" while a copy below it remains.** `@cloudflare/vite-plugin` pins an
+  exact wrangler; a site whose lockfile resolved plugin 1.54.4 (pinning 4.129.0) got the floor
+  installed at the top, the plugin's 4.129.0 left nested under it, `toolchain: wrangler 4.131.1,
+  at the floor` printed off the top copy, and `npm audit` still naming sharp. The step now reads
+  the plugin's pin first and, when it is below the floor, runs `npm update @cloudflare/vite-plugin`
+  within the range `@astrojs/cloudflare` allows, then installs the wrangler the plugin now pins,
+  so the two resolve to one copy; it reads every wrangler in the tree afterwards, from disk, and
+  a copy below the floor is reported by its path with the command that moves it. A site 1.8.0
+  left in that state is repaired by the next `npx webm upgrade`. **`webm doctor`'s
+  `toolchain-floor` reads every copy too**, and warns by path when a nested one is below the
+  floor. The end-to-end test now pins the 1.5-era plugin before the upgrade and asserts the plugin
+  moved, one copy remains, and the audit is clean.
+- **`webm doctor`'s `/_image` check resolves a tag through the file's imports rather than
+  matching its name.** A site's own wrapper named `Picture`, which already branches on
+  `Astro.isPrerendered` around `<Image>`, was flagged by name on every block that used it. Now
+  only a name bound to `astro:assets` - `Image`, `Picture` or `getImage`, aliases included -
+  counts in a file, and a local wrapper is walked and judged on its own guard: an unguarded one
+  fails naming the wrapper, a guarded one passes however it is named. The same walk now follows a
+  site's own on-demand routes into the components they import.
+
+---
+
 ## 1.8.0 — 2026-09-15
 
 ### Added

@@ -6,6 +6,7 @@ import {
   chromeImageHits,
   onDemandRoutes,
   resolveImport,
+  unguardedAssetUse,
   PACKAGE_SECRETS,
   stripComments,
   type CheckContext,
@@ -38,7 +39,10 @@ const base = (over: Partial<CheckContext> = {}): CheckContext => ({
   sync: { version: '1.0.0', skills: ['launch'] },
   mcp: { declared: mcpConfig().mcpServers, enabled: [...MCP_NAMES] },
   version: '1.0.0',
-  toolchain: { wrangler: WRANGLER_FLOOR },
+  toolchain: {
+    wrangler: WRANGLER_FLOOR,
+    copies: [{ path: 'node_modules/wrangler', version: WRANGLER_FLOOR }],
+  },
   worker: { name: 'acme', deployments: 1, skipped: null },
   ...over,
 });
@@ -101,8 +105,57 @@ test('a missing sync directory fails and names --ignore-scripts', () => {
   assert.match(r.detail!, /ignore-scripts/);
 });
 
+test('a second wrangler below the floor, nested under the plugin, warns by its path even with the top one at the floor', () => {
+  const r = runCheck(
+    'toolchain-floor',
+    base({
+      toolchain: {
+        wrangler: WRANGLER_FLOOR,
+        copies: [
+          { path: 'node_modules/wrangler', version: WRANGLER_FLOOR },
+          {
+            path: 'node_modules/@cloudflare/vite-plugin/node_modules/wrangler',
+            version: '4.129.0',
+          },
+        ],
+      },
+    }),
+  );
+  assert.equal(r.status, 'warn');
+  assert.match(
+    r.detail!,
+    /4\.129\.0 remains at node_modules\/@cloudflare\/vite-plugin\/node_modules\/wrangler/,
+  );
+  assert.match(r.detail!, /npx webm upgrade/);
+
+  /* A second copy at or above the floor is not a warning. */
+  assert.equal(
+    runCheck(
+      'toolchain-floor',
+      base({
+        toolchain: {
+          wrangler: '4.132.0',
+          copies: [
+            { path: 'node_modules/wrangler', version: '4.132.0' },
+            { path: 'node_modules/x/node_modules/wrangler', version: WRANGLER_FLOOR },
+          ],
+        },
+      }),
+    ).status,
+    'pass',
+  );
+});
+
 test('wrangler below the toolchain floor warns, naming both versions and the upgrade', () => {
-  const r = runCheck('toolchain-floor', base({ toolchain: { wrangler: '4.129.0' } }));
+  const r = runCheck(
+    'toolchain-floor',
+    base({
+      toolchain: {
+        wrangler: '4.129.0',
+        copies: [{ path: 'node_modules/wrangler', version: '4.129.0' }],
+      },
+    }),
+  );
   assert.equal(r.status, 'warn');
   assert.match(r.detail!, /wrangler 4\.129\.0 is installed/);
   assert.ok(r.detail!.includes(WRANGLER_FLOOR));
@@ -112,10 +165,21 @@ test('wrangler below the toolchain floor warns, naming both versions and the upg
 test("wrangler at or above the floor passes, and not installed is not this check's problem", () => {
   assert.equal(runCheck('toolchain-floor', base()).status, 'pass');
   assert.equal(
-    runCheck('toolchain-floor', base({ toolchain: { wrangler: '4.200.0' } })).status,
+    runCheck(
+      'toolchain-floor',
+      base({
+        toolchain: {
+          wrangler: '4.200.0',
+          copies: [{ path: 'node_modules/wrangler', version: '4.200.0' }],
+        },
+      }),
+    ).status,
     'pass',
   );
-  assert.equal(runCheck('toolchain-floor', base({ toolchain: { wrangler: null } })).status, 'pass');
+  assert.equal(
+    runCheck('toolchain-floor', base({ toolchain: { wrangler: null, copies: [] } })).status,
+    'pass',
+  );
 });
 
 test('a stale sync warns rather than fails - the skills still work', () => {
@@ -136,21 +200,100 @@ test('querySelector<HTMLSelectElement> is caught, and the message says to cast',
   assert.match(r.detail!, /Cast instead/);
 });
 
+const ASSETS = "import { Image } from 'astro:assets';\n";
+
 test('<Image> on an on-demand route fails unless it branches on isPrerendered', () => {
   const bad = base({
-    pages: new Map([['src/pages/x.astro', 'export const prerender = false;\n<Image src={a} />']]),
+    pages: new Map([
+      ['src/pages/x.astro', `export const prerender = false;\n${ASSETS}<Image src={a} />`],
+    ]),
   });
-  assert.equal(runCheck('image-on-demand', bad).status, 'fail');
+  const r = runCheck('image-on-demand', bad);
+  assert.equal(r.status, 'fail');
+  assert.match(
+    r.detail!,
+    /^src\/pages\/x\.astro - /,
+    'a route names itself, with no "reached from"',
+  );
 
   const guarded = base({
     pages: new Map([
       [
         'src/pages/x.astro',
-        'export const prerender = false;\nAstro.isPrerendered ? <Image src={a}/> : <img/>',
+        `export const prerender = false;\n${ASSETS}Astro.isPrerendered ? <Image src={a}/> : <img/>`,
       ],
     ]),
   });
   assert.equal(runCheck('image-on-demand', guarded).status, 'pass');
+});
+
+test("a site's own wrapper named Picture is judged on its own guard, not on its name", () => {
+  /*
+   * scrapbooku, 2026-09-16: content-000007 imports general-000002.astro as `Picture`, and that
+   * wrapper already branches on isPrerendered around <Image>. Matching the tag name flagged the
+   * one component doing it right.
+   */
+  const WRAPPER = 'src/components/general/general-000002/general-000002.astro';
+  const BLOCK = 'src/components/content/content-000007/content-000007.astro';
+  const safeWrapper = `---\n${ASSETS}const { image, alt } = Astro.props;\n---\n{Astro.isPrerendered ? <Image src={image} alt={alt} /> : <img src={image.src} alt={alt} />}`;
+  const unsafeWrapper = `---\n${ASSETS}const { image, alt } = Astro.props;\n---\n<Image src={image} alt={alt} />`;
+  const block = `---\nimport Picture from '../../general/general-000002/general-000002.astro';\n---\n<Picture image={a} alt="" />`;
+  const registry = `export { default as footer } from './content/content-000007/content-000007.astro';`;
+
+  const safe = base({
+    registry,
+    components: new Map([
+      [WRAPPER, safeWrapper],
+      [BLOCK, block],
+    ]),
+  });
+  assert.equal(runCheck('image-on-demand', safe).status, 'pass');
+
+  const unsafe = base({
+    registry,
+    components: new Map([
+      [WRAPPER, unsafeWrapper],
+      [BLOCK, block],
+    ]),
+  });
+  const r = runCheck('image-on-demand', unsafe);
+  assert.equal(r.status, 'fail');
+  assert.match(
+    r.detail!,
+    /general-000002\.astro \(reached from footer\)/,
+    'the wrapper is named, not the block',
+  );
+  assert.doesNotMatch(r.detail!, /content-000007/);
+
+  /* The same through a site's own on-demand route: the wrapper is reached from the page. */
+  const viaPage = base({
+    pages: new Map([
+      [
+        'src/pages/x.astro',
+        `export const prerender = false;\nimport Picture from '../components/general/general-000002/general-000002.astro';\n<Picture image={a} alt="" />`,
+      ],
+    ]),
+    components: new Map([[WRAPPER, unsafeWrapper]]),
+  });
+  assert.match(
+    runCheck('image-on-demand', viaPage).detail!,
+    /general-000002\.astro \(reached from src\/pages\/x\.astro\)/,
+  );
+
+  /* An alias is still astro:assets. */
+  assert.equal(
+    unguardedAssetUse(
+      "import { Image as Img, getImage as gi } from 'astro:assets';\n<Img src={a} />",
+    ),
+    true,
+  );
+  assert.equal(
+    unguardedAssetUse(
+      "import { getImage as gi } from 'astro:assets';\nconst s = await gi({ src: a });",
+    ),
+    true,
+  );
+  assert.equal(unguardedAssetUse('<Picture src={a} />'), false, 'no import from astro:assets');
 });
 
 /*
@@ -245,7 +388,7 @@ test('<Picture> and getImage count, a comment does not, and a chrome file that m
   const viaRegistry = chromeSite(
     `import connect from './content/content-000002/content-000002.astro';\nexport { default as footer } from './regions/region-000001/region-000001.astro';\nexport const blocks = { 'content-000002': connect };`,
     `---\nimport { blocks } from '../../registry.ts';\nconst Block = blocks[Astro.props.type];\n---\n<Block />`,
-    `---\nconst src = await getImage({ src: a });\n---`,
+    `---\nimport { getImage } from 'astro:assets';\nconst src = await getImage({ src: a });\n---`,
   );
   const r = runCheck('image-on-demand', viaRegistry);
   assert.equal(r.status, 'fail');

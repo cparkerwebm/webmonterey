@@ -16,7 +16,7 @@ import { CHECKS, type CheckContext } from './checks.ts';
 import { loadSiteFiles } from '../integration/config.ts';
 
 import { PACKAGE_ROOT, packageVersion } from './package-root.ts';
-import { installedWrangler } from './toolchain.ts';
+import { installedWrangler, wranglerCopies } from './toolchain.ts';
 
 /** Strip // and /* comments so JSON.parse can read a .jsonc file. */
 function parseJsonc<T>(source: string): T {
@@ -233,7 +233,7 @@ export function buildContext(siteRoot: string): CheckContext {
     sync: existsSync(syncPath) ? JSON.parse(readFileSync(syncPath, 'utf8')) : null,
     mcp: readMcp(siteRoot),
     version: packageVersion(),
-    toolchain: { wrangler: installedWrangler(siteRoot) },
+    toolchain: { wrangler: installedWrangler(siteRoot), copies: wranglerCopies(siteRoot) },
   };
 }
 

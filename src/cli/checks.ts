@@ -12,7 +12,7 @@ import { isValidTimeZone, PLACEHOLDER, isConfigured } from '../includes/webmonte
 import type { SiteConfig } from '../includes/webmonterey/config.ts';
 import { MCP_NAMES, MCP_SERVERS, mcpGaps } from './mcp.ts';
 import { compareVersions } from './codemods.ts';
-import { WRANGLER_FLOOR } from './toolchain.ts';
+import { PLUGIN, staleCopies, WRANGLER_FLOOR, type WranglerCopy } from './toolchain.ts';
 
 export type Status = 'pass' | 'warn' | 'fail';
 
@@ -90,7 +90,12 @@ export interface CheckContext {
    * from the range in package.json, which says what the site would accept, not what it has.
    * Null when the package is not installed.
    */
-  toolchain: { wrangler: string | null };
+  toolchain: {
+    /** The wrangler at the top of the tree. */
+    wrangler: string | null;
+    /** Every wrangler in the tree, the top one first - a second copy nests under the plugin. */
+    copies: WranglerCopy[];
+  };
   /**
    * Whether the Worker named in wrangler.jsonc exists on the account, asked of wrangler by the
    * doctor. `deployments` is how many it listed - null when the question was not asked, and
@@ -189,8 +194,31 @@ export function chromeFiles(registry: string): Map<string, string> {
   return out;
 }
 
-const IMAGE_USE = /<Image\b|<Picture\b|getImage\s*\(/;
 const GUARDED = /Astro\.isPrerendered/;
+const ASSET_API = ['Image', 'Picture', 'getImage'];
+
+/**
+ * True when the file renders or calls astro:assets' image API outside an Astro.isPrerendered
+ * branch. THE NAME IS RESOLVED THROUGH THE IMPORT, not matched as a tag: a site's own wrapper
+ * called Picture, which already branches on isPrerendered inside, is not <Picture> from
+ * astro:assets, and matching the tag name flagged exactly that - a component doing the right
+ * thing, named for what it wraps. Only a local name bound to astro:assets counts here; a local
+ * wrapper is a separate file, walked and judged on its own guard.
+ */
+export function unguardedAssetUse(code: string): boolean {
+  if (GUARDED.test(code)) return false;
+  const names: string[] = [];
+  for (const m of code.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]astro:assets['"]/g)) {
+    for (const entry of m[1]!.split(',')) {
+      const [imported, local = imported] = entry
+        .trim()
+        .split(/\s+as\s+/)
+        .map((s) => s.trim());
+      if (imported && ASSET_API.includes(imported)) names.push(local!);
+    }
+  }
+  return names.some((n) => new RegExp(`<${n}\\b|\\b${n}\\s*\\(`).test(code));
+}
 
 /**
  * Every file the chrome reaches - the exports above and, transitively, what they import from the
@@ -207,6 +235,19 @@ export function chromeImageHits(registry: string, sources: Map<string, string>):
   const blockFiles = importsOf(registryCode)
     .map(({ ident, spec }) => (ident ? resolveImport(REGISTRY_PATH, spec) : null))
     .filter((f): f is string => f !== null);
+  return imageHits(chromeFiles(registry), sources, blockFiles);
+}
+
+/**
+ * The walk itself, from any set of start files - the chrome, or the site's own on-demand routes -
+ * through the site's own imports. A start file is named on its own; anything reached through one
+ * is named with the start it was reached from.
+ */
+export function imageHits(
+  starts: Map<string, string>,
+  sources: Map<string, string>,
+  blockFiles: string[] = [],
+): string[] {
   const find = (file: string): [string, string] | null => {
     for (const candidate of [file, `${file}.astro`, `${file}.ts`, `${file}/index.ts`]) {
       const src = sources.get(candidate);
@@ -215,7 +256,7 @@ export function chromeImageHits(registry: string, sources: Map<string, string>):
     return null;
   };
 
-  const queue = [...chromeFiles(registry)].map(([file, via]) => ({ file, via }));
+  const queue = [...starts].map(([file, via]) => ({ file, via }));
   const seen = new Set<string>();
   const hits: string[] = [];
   while (queue.length) {
@@ -224,7 +265,8 @@ export function chromeImageHits(registry: string, sources: Map<string, string>):
     if (!found || seen.has(found[0])) continue;
     seen.add(found[0]);
     const code = stripComments(found[1]);
-    if (IMAGE_USE.test(code) && !GUARDED.test(code)) hits.push(`${found[0]} (reached from ${via})`);
+    if (unguardedAssetUse(code))
+      hits.push(found[0] === via ? found[0] : `${found[0]} (reached from ${via})`);
     for (const { spec } of importsOf(code)) {
       const next = resolveImport(found[0], spec);
       if (!next) continue;
@@ -683,12 +725,29 @@ export const CHECKS: Check[] = [
        */
       const installed = ctx.toolchain.wrangler;
       if (!installed) return pass;
-      return compareVersions(installed, WRANGLER_FLOOR) < 0
-        ? warn(
-            `wrangler ${installed} is installed; this release's floor is ${WRANGLER_FLOOR}. ` +
-              `\`npx webm upgrade\` raises it.`,
-          )
-        : pass;
+      if (compareVersions(installed, WRANGLER_FLOOR) < 0) {
+        return warn(
+          `wrangler ${installed} is installed; this release's floor is ${WRANGLER_FLOOR}. ` +
+            `\`npx webm upgrade\` raises it.`,
+        );
+      }
+      /*
+       * EVERY COPY, not the top one. The adapter's plugin pins an exact wrangler, and a site can
+       * carry the plugin's copy nested beside its own: the top one at the floor, the nested one
+       * below it, and `npm audit` naming the advisory the top one was meant to close.
+       */
+      const nested = staleCopies(ctx.toolchain.copies).filter(
+        (c) => c.path !== 'node_modules/wrangler',
+      );
+      if (nested.length) {
+        return warn(
+          `wrangler ${installed} is at the top, but ` +
+            nested.map((c) => `${c.version} remains at ${c.path}`).join(', ') +
+            ` - below the floor (${WRANGLER_FLOOR}), pinned by ${PLUGIN}. ` +
+            `\`npx webm upgrade\` moves the plugin and the copy with it.`,
+        );
+      }
+      return pass;
     },
   },
   {
@@ -782,15 +841,14 @@ export const CHECKS: Check[] = [
        * wrote is prerendered, so the component looks fine everywhere a person checks.
        */
       const routes = new Set(onDemandRoutes(ctx.pages));
-      const hits: string[] = [];
-      for (const [file, src] of ctx.pages) {
-        if (!/export\s+const\s+prerender\s*=\s*false/.test(src)) continue;
-        const code = stripComments(src);
-        if (IMAGE_USE.test(code) && !GUARDED.test(code)) hits.push(file);
-      }
-      if (ctx.registry !== null) {
-        hits.push(...chromeImageHits(ctx.registry, new Map([...ctx.components, ...ctx.includes])));
-      }
+      const sources = new Map([...ctx.pages, ...ctx.components, ...ctx.includes]);
+      const onDemand = new Map(
+        [...ctx.pages]
+          .filter(([, src]) => /export\s+const\s+prerender\s*=\s*false/.test(src))
+          .map(([file]) => [file, file]),
+      );
+      const hits = imageHits(onDemand, sources);
+      if (ctx.registry !== null) hits.push(...chromeImageHits(ctx.registry, sources));
       return hits.length
         ? fail(
             `${hits.join(', ')} - imageService: 'compile' ships no runtime endpoint, and the ` +
