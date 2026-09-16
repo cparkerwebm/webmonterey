@@ -11,6 +11,8 @@
 import { isValidTimeZone, PLACEHOLDER, isConfigured } from '../includes/webmonterey/config.ts';
 import type { SiteConfig } from '../includes/webmonterey/config.ts';
 import { MCP_NAMES, MCP_SERVERS, mcpGaps } from './mcp.ts';
+import { compareVersions } from './codemods.ts';
+import { WRANGLER_FLOOR } from './toolchain.ts';
 
 export type Status = 'pass' | 'warn' | 'fail';
 
@@ -84,6 +86,12 @@ export interface CheckContext {
   /** The installed package version. */
   version: string;
   /**
+   * The site's installed toolchain, read from each package's manifest in node_modules - never
+   * from the range in package.json, which says what the site would accept, not what it has.
+   * Null when the package is not installed.
+   */
+  toolchain: { wrangler: string | null };
+  /**
    * Whether the Worker named in wrangler.jsonc exists on the account, asked of wrangler by the
    * doctor. `deployments` is how many it listed - null when the question was not asked, and
    * `skipped` then says why: wrangler not installed, not logged in, no network.
@@ -97,6 +105,138 @@ export interface Check {
   /** What the failure looks like from outside, so the report explains itself. */
   silentAs: string;
   run(ctx: CheckContext): CheckResult;
+}
+
+/**
+ * THE CHROME: the registry exports that are components the package's OWN routes render. Base
+ * renders header, footer and panels on every route that uses it; the marketing outcome pages
+ * render marketingPage or pageHeader; /webmaster renders webmasterPage. structuredData is data,
+ * not a component, and `blocks` is the map the page router reads.
+ */
+export const CHROME_EXPORTS = [
+  'header',
+  'footer',
+  'panels',
+  'pageHeader',
+  'marketingPage',
+  'webmasterPage',
+] as const;
+
+const REGISTRY_PATH = 'src/components/registry.ts';
+
+/** A relative import resolved against the importing file; null for a package or bare import. */
+export function resolveImport(from: string, spec: string): string | null {
+  if (!/^\.\.?\//.test(spec)) return null;
+  const parts = from.split('/');
+  parts.pop();
+  for (const seg of spec.split('/')) {
+    if (seg === '..') parts.pop();
+    else if (seg !== '.' && seg !== '') parts.push(seg);
+  }
+  return parts.join('/');
+}
+
+/** Every module a file imports or re-exports from, with the default-import identifier when there is one. */
+function importsOf(code: string): Array<{ ident: string | null; spec: string }> {
+  const out: Array<{ ident: string | null; spec: string }> = [];
+  for (const m of code.matchAll(
+    /import\s+(?:type\s+)?(?:([A-Za-z_$][\w$]*)\s*,?\s*)?(?:\{[^}]*\}|\*\s+as\s+[\w$]+)?\s*from\s*['"]([^'"]+)['"]/g,
+  )) {
+    out.push({ ident: m[1] ?? null, spec: m[2]! });
+  }
+  for (const m of code.matchAll(/export\s*\{[^}]*\}\s*from\s*['"]([^'"]+)['"]/g)) {
+    out.push({ ident: null, spec: m[1]! });
+  }
+  return out;
+}
+
+/**
+ * The files the registry's chrome exports resolve to, keyed by file, valued by the export name.
+ *
+ * Three ways a site writes one, all seen in the fleet:
+ *   export { default as footer } from './regions/footer.astro';
+ *   import footer from './regions/footer.astro';  export { footer };   // or  { footer as header }
+ *   import region from './regions/footer.astro';  export const footer = region;
+ * An export set to null - `export const marketingPage = null` - is a site declining it.
+ */
+export function chromeFiles(registry: string): Map<string, string> {
+  const code = stripComments(registry);
+  const byIdent = new Map<string, string>();
+  for (const { ident, spec } of importsOf(code)) {
+    const file = ident && resolveImport(REGISTRY_PATH, spec);
+    if (ident && file) byIdent.set(ident, file);
+  }
+  const out = new Map<string, string>();
+  const claim = (file: string | null | undefined, name: string) => {
+    if (file && !out.has(file)) out.set(file, name);
+  };
+  for (const m of code.matchAll(/export\s*\{([^}]*)\}(?:\s*from\s*['"]([^'"]+)['"])?/g)) {
+    const from = m[2] ? resolveImport(REGISTRY_PATH, m[2]) : null;
+    for (const entry of m[1]!.split(',')) {
+      const [local, exported = local] = entry
+        .trim()
+        .split(/\s+as\s+/)
+        .map((s) => s.trim());
+      if (!local || !(CHROME_EXPORTS as readonly string[]).includes(exported!)) continue;
+      claim(m[2] ? from : byIdent.get(local), exported!);
+    }
+  }
+  for (const m of code.matchAll(
+    /export\s+const\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*([A-Za-z_$][\w$]*)\s*;/g,
+  )) {
+    if ((CHROME_EXPORTS as readonly string[]).includes(m[1]!)) claim(byIdent.get(m[2]!), m[1]!);
+  }
+  return out;
+}
+
+const IMAGE_USE = /<Image\b|<Picture\b|getImage\s*\(/;
+const GUARDED = /Astro\.isPrerendered/;
+
+/**
+ * Every file the chrome reaches - the exports above and, transitively, what they import from the
+ * site's own tree - that uses <Image>, <Picture> or getImage without an Astro.isPrerendered branch.
+ * Each hit names the file and the chrome export it was reached from.
+ *
+ * A file that imports the registry is rendering blocks by type - a footer region that maps a
+ * footer's block list through `blocks` - so every block in the registry is reachable from it.
+ * Package imports are not followed: the package's own components are the package's problem, and
+ * its tests. Sources are keyed the way the doctor reads them, `src/components/...`.
+ */
+export function chromeImageHits(registry: string, sources: Map<string, string>): string[] {
+  const registryCode = stripComments(registry);
+  const blockFiles = importsOf(registryCode)
+    .map(({ ident, spec }) => (ident ? resolveImport(REGISTRY_PATH, spec) : null))
+    .filter((f): f is string => f !== null);
+  const find = (file: string): [string, string] | null => {
+    for (const candidate of [file, `${file}.astro`, `${file}.ts`, `${file}/index.ts`]) {
+      const src = sources.get(candidate);
+      if (src !== undefined) return [candidate, src];
+    }
+    return null;
+  };
+
+  const queue = [...chromeFiles(registry)].map(([file, via]) => ({ file, via }));
+  const seen = new Set<string>();
+  const hits: string[] = [];
+  while (queue.length) {
+    const { file, via } = queue.shift()!;
+    const found = find(file);
+    if (!found || seen.has(found[0])) continue;
+    seen.add(found[0]);
+    const code = stripComments(found[1]);
+    if (IMAGE_USE.test(code) && !GUARDED.test(code)) hits.push(`${found[0]} (reached from ${via})`);
+    for (const { spec } of importsOf(code)) {
+      const next = resolveImport(found[0], spec);
+      if (!next) continue;
+      if (next === REGISTRY_PATH || `${next}.ts` === REGISTRY_PATH) {
+        for (const block of blockFiles)
+          queue.push({ file: block, via: `${via}, through the registry's blocks` });
+        continue;
+      }
+      queue.push({ file: next, via });
+    }
+  }
+  return hits;
 }
 
 /**
@@ -529,6 +669,29 @@ export const CHECKS: Check[] = [
     },
   },
   {
+    id: 'toolchain-floor',
+    title: `wrangler is at or above the toolchain floor (${WRANGLER_FLOOR})`,
+    silentAs:
+      'a dependency advisory in miniflare, workerd or sharp stays open on this site alone; the build passes and nothing names it',
+    run(ctx) {
+      /*
+       * THE FLOOR IS HOW A SITE THAT HAS NOT UPGRADED FINDS OUT. `webm upgrade` raises wrangler
+       * on every site as it upgrades; a site that has not is on whatever its lockfile had, and
+       * its build says nothing about it. Read from the installed manifest, not the range: a
+       * range of ^4.118.0 with 4.131.1 in the lockfile is fine, and the reverse cannot happen.
+       * Not installed is not this check's problem - the site cannot build at all, which is loud.
+       */
+      const installed = ctx.toolchain.wrangler;
+      if (!installed) return pass;
+      return compareVersions(installed, WRANGLER_FLOOR) < 0
+        ? warn(
+            `wrangler ${installed} is installed; this release's floor is ${WRANGLER_FLOOR}. ` +
+              `\`npx webm upgrade\` raises it.`,
+          )
+        : pass;
+    },
+  },
+  {
     /*
      * THE DOCS SERVERS, AND WHY A CHECK RATHER THAN TRUST.
      *
@@ -606,21 +769,34 @@ export const CHECKS: Check[] = [
   },
   {
     id: 'image-on-demand',
-    title: 'No <Image> or getImage on an on-demand route',
+    title:
+      'No <Image>, <Picture> or getImage on an on-demand route, or in the chrome those routes render',
     silentAs: 'a dead /_image URL, in production only - astro dev serves it happily',
     run(ctx) {
+      /*
+       * TWO PLACES, ONE TRAP. The site's own `prerender = false` routes are the obvious one. The
+       * other is the PACKAGE's on-demand routes - /subscribe/confirm, /unsubscribe - which render
+       * the site's chrome from the registry: header, footer, panels, and the marketing page or
+       * page header, plus whatever those import (a connect block in the footer region, say). An
+       * <Image> in any of them emits /_image on those routes, and only there: every page the site
+       * wrote is prerendered, so the component looks fine everywhere a person checks.
+       */
       const routes = new Set(onDemandRoutes(ctx.pages));
       const hits: string[] = [];
       for (const [file, src] of ctx.pages) {
         if (!/export\s+const\s+prerender\s*=\s*false/.test(src)) continue;
         const code = stripComments(src);
-        if (/<Image\b|getImage\s*\(/.test(code) && !/Astro\.isPrerendered/.test(code))
-          hits.push(file);
+        if (IMAGE_USE.test(code) && !GUARDED.test(code)) hits.push(file);
+      }
+      if (ctx.registry !== null) {
+        hits.push(...chromeImageHits(ctx.registry, new Map([...ctx.components, ...ctx.includes])));
       }
       return hits.length
         ? fail(
-            `${hits.join(', ')} - imageService: 'compile' ships no runtime endpoint. Branch on ` +
-              `Astro.isPrerendered and fall back to a plain <img>. (${routes.size} on-demand routes)`,
+            `${hits.join(', ')} - imageService: 'compile' ships no runtime endpoint, and the ` +
+              `package's own on-demand routes (/subscribe/confirm, /unsubscribe) render the chrome. ` +
+              `Branch on Astro.isPrerendered and fall back to a plain <img src={image.src}>. ` +
+              `(${routes.size} on-demand routes of the site's own)`,
           )
         : pass;
     },

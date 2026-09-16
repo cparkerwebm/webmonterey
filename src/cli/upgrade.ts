@@ -12,8 +12,12 @@
  * already imported - the old one, in which a codemod shipping in the version being installed does
  * not exist. Two upgrades of one site each applied nothing until `--codemods-from` was run by hand
  * in a fresh process. So after the install this process does exactly one more thing: it spawns
- * the NEW binary, from the site's node_modules, to run the codemods, the sync and the queue step.
- * Nothing after the install runs from memory.
+ * the NEW binary, from the site's node_modules, to run the codemods, the toolchain step, the sync
+ * and the queue step. Nothing after the install runs from memory.
+ *
+ * THE TOOLCHAIN STEP is the one that moves a dependency other than the package: it raises the
+ * site's wrangler to the floor the new version was tested with, so a fleet-wide advisory in
+ * miniflare or workerd is fixed by upgrading rather than one repo at a time. See toolchain.ts.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -22,6 +26,7 @@ import { codemodsAfter } from './codemods.ts';
 import { sync } from './sync.ts';
 import { enableQueue, report as reportQueue } from './queue.ts';
 import { resolveWrangler, wranglerRunner } from './wrangler.ts';
+import { npmRunner, raiseToolchain, report as reportToolchain } from './toolchain.ts';
 import { packageName } from './package-root.ts';
 
 const PACKAGE = packageName();
@@ -54,10 +59,10 @@ export function run(argv: string[]): number {
 
   /*
    * --codemods-from <version>: the second half of an upgrade, run by the NEW binary - the
-   * codemods since that version, the sync, the queue step. No install, no branch, no clean-tree
-   * guard: the first half did those, or a person is re-running it on purpose (a site whose
-   * package.json was bumped by hand, a site upgraded on a version that had the bug above), and
-   * its changes are reviewed the way any edit is.
+   * codemods since that version, the toolchain step, the sync, the queue step. No install, no
+   * branch, no clean-tree guard: the first half did those, or a person is re-running it on
+   * purpose (a site whose package.json was bumped by hand, a site upgraded on a version that had
+   * the bug above), and its changes are reviewed the way any edit is.
    */
   const codemodsFrom = argv[argv.indexOf('--codemods-from') + 1];
   if (argv.includes('--codemods-from')) {
@@ -70,6 +75,7 @@ export function run(argv: string[]): number {
     }
     console.log(`Installed: ${installed}. Running the codemods since ${codemodsFrom}.`);
     runMods(siteRoot, codemodsAfter(codemodsFrom));
+    toolchainStep(siteRoot);
     const synced = resync(siteRoot);
     if (!noQueue) queueStep(siteRoot);
     tail(synced);
@@ -115,7 +121,9 @@ export function run(argv: string[]): number {
     );
     return 1;
   }
-  console.log(`\nInstalled ${to}. Handing over to it for the codemods, the sync and the queue.`);
+  console.log(
+    `\nInstalled ${to}. Handing over to it for the codemods, the toolchain, the sync and the queue.`,
+  );
   try {
     execFileSync(
       process.execPath,
@@ -141,6 +149,19 @@ function runMods(siteRoot: string, mods: ReturnType<typeof codemodsAfter>): void
     for (const c of changes) console.log(`      ${c}`);
     if (!changes.length) console.log(`      nothing to change`);
   }
+}
+
+/*
+ * THE TOOLCHAIN, on every site: wrangler raised to the floor this version was tested with, and
+ * nothing else touched. Runs after the codemods, which may edit wrangler.jsonc, and before the
+ * sync, so a site that stops here has a lockfile the doctor's toolchain-floor check accepts.
+ * A newer wrangler bundles a newer workerd, and the compatibility_date trap is a date NEWER
+ * than the bundled runtime, not older - so this direction is safe; the stale-date check covers
+ * the other.
+ */
+function toolchainStep(siteRoot: string): void {
+  console.log('\nToolchain:');
+  reportToolchain(raiseToolchain(siteRoot, npmRunner(siteRoot)));
 }
 
 function resync(siteRoot: string): ReturnType<typeof sync> {

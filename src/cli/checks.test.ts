@@ -2,7 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CHECKS,
+  chromeFiles,
+  chromeImageHits,
   onDemandRoutes,
+  resolveImport,
   PACKAGE_SECRETS,
   stripComments,
   type CheckContext,
@@ -11,6 +14,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MCP_NAMES, MCP_SERVERS, mcpConfig } from './mcp.ts';
+import { WRANGLER_FLOOR } from './toolchain.ts';
 
 const base = (over: Partial<CheckContext> = {}): CheckContext => ({
   site: { client: 'Acme', domain: 'acme.com' },
@@ -34,6 +38,7 @@ const base = (over: Partial<CheckContext> = {}): CheckContext => ({
   sync: { version: '1.0.0', skills: ['launch'] },
   mcp: { declared: mcpConfig().mcpServers, enabled: [...MCP_NAMES] },
   version: '1.0.0',
+  toolchain: { wrangler: WRANGLER_FLOOR },
   worker: { name: 'acme', deployments: 1, skipped: null },
   ...over,
 });
@@ -96,6 +101,23 @@ test('a missing sync directory fails and names --ignore-scripts', () => {
   assert.match(r.detail!, /ignore-scripts/);
 });
 
+test('wrangler below the toolchain floor warns, naming both versions and the upgrade', () => {
+  const r = runCheck('toolchain-floor', base({ toolchain: { wrangler: '4.129.0' } }));
+  assert.equal(r.status, 'warn');
+  assert.match(r.detail!, /wrangler 4\.129\.0 is installed/);
+  assert.ok(r.detail!.includes(WRANGLER_FLOOR));
+  assert.match(r.detail!, /npx webm upgrade/);
+});
+
+test("wrangler at or above the floor passes, and not installed is not this check's problem", () => {
+  assert.equal(runCheck('toolchain-floor', base()).status, 'pass');
+  assert.equal(
+    runCheck('toolchain-floor', base({ toolchain: { wrangler: '4.200.0' } })).status,
+    'pass',
+  );
+  assert.equal(runCheck('toolchain-floor', base({ toolchain: { wrangler: null } })).status, 'pass');
+});
+
 test('a stale sync warns rather than fails - the skills still work', () => {
   assert.equal(
     runCheck('skills-synced', base({ sync: { version: '0.9.0', skills: [] } })).status,
@@ -129,6 +151,116 @@ test('<Image> on an on-demand route fails unless it branches on isPrerendered', 
     ]),
   });
   assert.equal(runCheck('image-on-demand', guarded).status, 'pass');
+});
+
+/*
+ * THE CHROME WALK. The package's on-demand routes render the registry's chrome, so an <Image> in
+ * a footer's connect block is a dead /_image on /subscribe/confirm - and every page the site
+ * wrote is prerendered, so nothing else shows it.
+ */
+const FOOTER = 'src/components/regions/region-000001/region-000001.astro';
+const CONNECT = 'src/components/content/content-000002/content-000002.astro';
+const HERO = 'src/components/content/content-000001/content-000001.astro';
+const chromeSite = (
+  registry: string,
+  footer: string,
+  connect: string,
+  hero = '<Image src={a} />',
+) =>
+  base({
+    registry,
+    components: new Map([
+      [FOOTER, footer],
+      [CONNECT, connect],
+      [HERO, hero],
+    ]),
+  });
+
+test('chromeFiles reads the three ways a site exports its chrome, and skips a null one', () => {
+  const reexport = chromeFiles(
+    `export { default as footer } from './regions/region-000001/region-000001.astro';`,
+  );
+  assert.deepEqual([...reexport], [[FOOTER, 'footer']]);
+
+  const named = chromeFiles(
+    `import region from './regions/region-000001/region-000001.astro';\nimport hero from './content/content-000001/content-000001.astro';\nexport { region as header, hero };\nexport const footer = region;\nexport const marketingPage = null;`,
+  );
+  assert.deepEqual([...named], [[FOOTER, 'header']]);
+
+  /* A block only in the map is not chrome. */
+  assert.deepEqual(
+    [...chromeFiles(`import x from './content/x.astro';\nexport const blocks = { 'x': x };`)],
+    [],
+  );
+  assert.equal(
+    resolveImport('src/components/a/b.astro', '../c/d.astro'),
+    'src/components/c/d.astro',
+  );
+  assert.equal(resolveImport('src/components/a/b.astro', '@cparkerwebm/webmonterey/x'), null);
+});
+
+test('an unguarded <Image> in a block the footer imports FAILS, naming the file and the chrome it is reached from', () => {
+  const registry = `import connect from './content/content-000002/content-000002.astro';\nimport hero from './content/content-000001/content-000001.astro';\nexport { default as footer } from './regions/region-000001/region-000001.astro';\nexport const blocks = { 'content-000001': hero, 'content-000002': connect };`;
+  const bad = chromeSite(
+    registry,
+    `---\nimport Connect from '../../content/content-000002/content-000002.astro';\n---\n<footer><Connect /></footer>`,
+    `---\nimport { Image } from 'astro:assets';\nimport logo from '../../../assets/logo.png';\n---\n<Image src={logo} alt="" />`,
+  );
+  const r = runCheck('image-on-demand', bad);
+  assert.equal(r.status, 'fail');
+  assert.match(r.detail!, /content-000002\.astro \(reached from footer\)/);
+  assert.match(r.detail!, /subscribe\/confirm/);
+  assert.match(r.detail!, /<img src=\{image\.src\}>/);
+  assert.doesNotMatch(r.detail!, /content-000001/, 'the hero is a page block, not chrome');
+
+  /* The isPrerendered branch is the fix, and it clears it. */
+  const guarded = chromeSite(
+    registry,
+    `---\nimport Connect from '../../content/content-000002/content-000002.astro';\n---\n<footer><Connect /></footer>`,
+    `---\nimport { Image } from 'astro:assets';\n---\n{Astro.isPrerendered ? <Image src={logo} alt="" /> : <img src={logo.src} alt="" />}`,
+  );
+  assert.equal(runCheck('image-on-demand', guarded).status, 'pass');
+});
+
+test('<Picture> and getImage count, a comment does not, and a chrome file that maps the registry reaches every block', () => {
+  const direct = chromeSite(
+    `export { default as header } from './regions/region-000001/region-000001.astro';`,
+    `---\nimport { Picture } from 'astro:assets';\n---\n<Picture src={a} />`,
+    '',
+    '',
+  );
+  assert.match(
+    runCheck('image-on-demand', direct).detail!,
+    /region-000001\.astro \(reached from header\)/,
+  );
+
+  const commented = chromeSite(
+    `export { default as header } from './regions/region-000001/region-000001.astro';`,
+    `---\n// never use <Image> here: getImage( would 404\n---\n<header />`,
+    '',
+    '',
+  );
+  assert.equal(runCheck('image-on-demand', commented).status, 'pass');
+
+  const viaRegistry = chromeSite(
+    `import connect from './content/content-000002/content-000002.astro';\nexport { default as footer } from './regions/region-000001/region-000001.astro';\nexport const blocks = { 'content-000002': connect };`,
+    `---\nimport { blocks } from '../../registry.ts';\nconst Block = blocks[Astro.props.type];\n---\n<Block />`,
+    `---\nconst src = await getImage({ src: a });\n---`,
+  );
+  const r = runCheck('image-on-demand', viaRegistry);
+  assert.equal(r.status, 'fail');
+  assert.match(
+    r.detail!,
+    /content-000002\.astro \(reached from footer, through the registry's blocks\)/,
+  );
+  assert.deepEqual(
+    chromeImageHits(
+      `export { default as footer } from './regions/region-000001/region-000001.astro';`,
+      new Map(),
+    ),
+    [],
+    'a chrome file the doctor cannot read is not a hit',
+  );
 });
 
 test('a literal color in component CSS warns, but a token declaration does not', () => {

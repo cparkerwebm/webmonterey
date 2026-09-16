@@ -34,6 +34,7 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync, readdirSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { WRANGLER_FLOOR } from '../src/cli/toolchain.ts';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const DOMAIN = 'e2e.example';
@@ -70,6 +71,11 @@ const build = (cwd) => {
   return out;
 };
 const COLLISION = /cannot be defined more than once/;
+const atLeast = (version, floor) => {
+  const [a, b] = [version, floor].map((v) => v.split('.').map(Number));
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i];
+  return true;
+};
 
 const work = mkdtempSync(join(tmpdir(), 'webm-e2e-'));
 
@@ -393,7 +399,27 @@ try {
    */
   console.log('upgrade from 1.5.0 to the tarball…');
   writeFileSync(join(site, 'src/components/general/webmaster-page.astro'), oldLayout);
-  run('npm', ['install', '@cparkerwebm/webmonterey@1.5.0', '--silent', '--ignore-scripts'], site);
+  /*
+   * AND THE TOOLCHAIN SUCH A SITE HAS: wrangler 4.129.0 under a ^4.118.0 range, which is the site
+   * the toolchain step was written for - its miniflare bundles a sharp with an open advisory.
+   * The upgrade must raise it, leave one copy, and clear the advisory, without being asked.
+   */
+  run(
+    'npm',
+    [
+      'install',
+      '@cparkerwebm/webmonterey@1.5.0',
+      'wrangler@4.129.0',
+      '--silent',
+      '--ignore-scripts',
+    ],
+    site,
+  );
+  {
+    const pkg = JSON.parse(readFileSync(join(site, 'package.json'), 'utf8'));
+    pkg.devDependencies.wrangler = '^4.118.0';
+    writeFileSync(join(site, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
+  }
   run('git', ['add', '-A'], site);
   run(
     'git',
@@ -419,6 +445,45 @@ try {
       ),
     'the codemod list came from the old process',
   );
+  check(
+    'the toolchain step raised wrangler from the 1.5-era range, and said what moved',
+    /npm install wrangler@4\.\d+\.\d+ \(.*\): 4\.129\.0 -> 4\.\d+\.\d+/.test(crossText) &&
+      /package\.json: wrangler \^4\.118\.0 -> \^4\.\d+\.\d+/.test(crossText) &&
+      /toolchain: wrangler 4\.\d+\.\d+, (at|above) the floor/.test(crossText),
+    crossText
+      .split('\n')
+      .filter((l) => /toolchain|wrangler/i.test(l))
+      .join('\n'),
+  );
+  {
+    const ls = spawnSync('npm', ['ls', 'wrangler', '--parseable', '--all'], {
+      cwd: site,
+      encoding: 'utf8',
+    });
+    const copies = [...new Set((ls.stdout ?? '').split('\n').filter((l) => /wrangler$/.test(l)))];
+    const version = JSON.parse(
+      readFileSync(join(site, 'node_modules/wrangler/package.json'), 'utf8'),
+    ).version;
+    check(
+      'one copy of wrangler, at or above the floor',
+      copies.length === 1 && atLeast(version, WRANGLER_FLOOR),
+      `${copies.length} copies; installed ${version}; floor ${WRANGLER_FLOOR}`,
+    );
+    const audit = spawnSync('npm', ['audit', '--json'], { cwd: site, encoding: 'utf8' });
+    let vulnerabilities = null;
+    try {
+      vulnerabilities = JSON.parse(audit.stdout).vulnerabilities ?? {};
+    } catch {
+      /* no JSON: the registry was not reachable, and the check below says so */
+    }
+    check(
+      'npm audit has no entry for sharp after the upgrade',
+      vulnerabilities !== null && !('sharp' in vulnerabilities),
+      vulnerabilities
+        ? `advisories: ${Object.keys(vulnerabilities).join(', ') || 'none'}`
+        : (audit.stdout ?? '').slice(0, 200),
+    );
+  }
   check(
     'and the queue step ran from it too, skipping cleanly without a login and creating nothing',
     /queue: wrangler (is not logged in|could not create)/.test(crossText) &&
@@ -531,6 +596,14 @@ try {
 
   console.log('webm doctor…');
   const doctor = run('npx', ['webm', 'doctor'], site);
+  check(
+    'doctor: wrangler is at or above the toolchain floor',
+    /ok\s+wrangler is at or above the toolchain floor/.test(doctor),
+    doctor
+      .split('\n')
+      .filter((l) => /toolchain/.test(l))
+      .join('\n'),
+  );
   check(
     'doctor reports no failures',
     /0 failed/.test(doctor),

@@ -13,6 +13,7 @@
  * client and `#006abe` is not.
  */
 export { renderFooterHtml, renderFooterText, escapeHtml } from './footer.ts';
+export { renderPageHtml, PAGE_BACKGROUND } from './layout.ts';
 export { renderSubject, renderTopic, toAsciiSubject } from './subject.ts';
 export {
   renderHtml as renderNotificationHtml,

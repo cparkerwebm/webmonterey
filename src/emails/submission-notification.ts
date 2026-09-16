@@ -12,7 +12,8 @@
  * it just pushes the actual fields further down the preview pane. Subject lines are built by
  * subject.ts; the shared three-line footer is footer.ts.
  */
-import { escapeHtml, renderFooterHtml, renderFooterText } from './footer.ts';
+import { escapeHtml, renderFooterText } from './footer.ts';
+import { renderPageHtml } from './layout.ts';
 import { DEFAULT_COPY, fill } from '../includes/webmonterey/copy-defaults.ts';
 
 export interface SubmissionEmailInput {
@@ -47,7 +48,7 @@ export function renderHtml(input: SubmissionEmailInput): string {
     .map(
       (f) => `      <tr>
         <th align="left" style="padding:8px 16px 8px 0;vertical-align:top;color:#3f3f3f;font-weight:600;white-space:nowrap;">${escapeHtml(f.label)}</th>
-        <td style="padding:8px 0;vertical-align:top;color:#222;">${escapeHtml(f.value) || '&mdash;'}</td>
+        <td style="padding:8px 0;vertical-align:top;color:#222222;">${escapeHtml(f.value) || '&mdash;'}</td>
       </tr>`,
     )
     .join('\n');
@@ -61,16 +62,12 @@ export function renderHtml(input: SubmissionEmailInput): string {
    * Inline styles and a table layout on purpose. Email clients strip <style> blocks and have
    * no meaningful CSS support — the site's design tokens cannot be used here.
    */
-  return `<!doctype html>
-<html>
-  <body style="margin:0;padding:24px;background:#f1eae8;font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-    <div style="max-width:640px;margin:0 auto;padding:32px;background:#fff;border-radius:8px;">
-      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+  return renderPageHtml({
+    client: input.client,
+    domain: input.domain,
+    card: `      <table style="width:100%;border-collapse:collapse;font-size:14px;">
 ${rows}
       </table>
-      ${reference}
-    </div>
-${renderFooterHtml({ client: input.client, domain: input.domain })}
-  </body>
-</html>`;
+      ${reference}`,
+  });
 }

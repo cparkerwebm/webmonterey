@@ -86,6 +86,6 @@ export function renderFooterHtml(input: EmailFooterInput): string {
   return `    <div style="max-width:640px;margin:0 auto;padding:24px 32px 8px;text-align:center;font-size:13px;line-height:1.6;color:#3f3f3f;">
       <p style="margin:0;">&copy; ${year} ${escapeHtml(input.client)}</p>
       <p style="margin:0;">This is an automated notification for your account at the <a href="https://${escapeHtml(input.domain)}" target="_blank" rel="noopener" style="color:#3f3f3f;">${escapeHtml(input.domain)}</a> website.</p>
-      <p style="margin:8px 0 0;"><a href="${href}" target="_blank" rel="noopener" style="color:#222;font-weight:700;text-decoration:none;">${CREDIT_TEXT}</a></p>
+      <p style="margin:8px 0 0;"><a href="${href}" target="_blank" rel="noopener" style="color:#222222;font-weight:700;text-decoration:none;">${CREDIT_TEXT}</a></p>
     </div>`;
 }

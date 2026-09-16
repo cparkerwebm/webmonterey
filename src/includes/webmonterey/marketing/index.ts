@@ -24,7 +24,7 @@ import { escapeHtml } from '../../../emails/footer.ts';
 import { copy } from '../copy.ts';
 import { fill } from '../copy-defaults.ts';
 import { personalize } from '../webmaster/webmaster.ts';
-import { client, displayName, domain, features } from '../site.ts';
+import { client, displayName, domain, environment, features } from '../site.ts';
 import { fitsQueue, QUEUE_BINDING } from '../../cloudflare/queues/message.ts';
 import type { CampaignBatchMessage, SubscribeMessage } from '../../cloudflare/queues/message.ts';
 import {
@@ -40,7 +40,7 @@ import {
   unsubscribeByToken,
   type LinkOutcome,
 } from './subscribers.ts';
-import { confirmUrl, UNSUBSCRIBE_VARIABLE, unsubscribeUrl } from './links.ts';
+import { confirmUrl, mailOrigin, UNSUBSCRIBE_VARIABLE, unsubscribeUrl } from './links.ts';
 import type { ListEvent } from '../../sinch/mailgun/webhook.ts';
 
 export { isToken } from './tokens.ts';
@@ -51,7 +51,8 @@ export type { LinkOutcome } from './subscribers.ts';
 export const MKTG_BINDING = 'DB_MKTG';
 
 const db = () => getBinding<D1Database>(MKTG_BINDING);
-const origin = () => `https://${domain}/`;
+/** Where the links in a message point: the domain, or the preview host on a staging deployment. */
+const origin = (hostname: string | null | undefined) => mailOrigin(domain, environment, hostname);
 
 /** The form hand-off: a pending row, and the confirmation mail when the row is new or renewed. */
 export async function subscribe(message: SubscribeMessage): Promise<void> {
@@ -76,7 +77,7 @@ export async function subscribe(message: SubscribeMessage): Promise<void> {
   const input = {
     body: personalize(copy.marketing.confirmBody, client),
     button: copy.marketing.confirmButton,
-    confirmUrl: confirmUrl(origin(), result.token),
+    confirmUrl: confirmUrl(origin(message.hostname), result.token),
     client: displayName(),
     domain,
   };
@@ -236,7 +237,7 @@ export async function sendCampaignBatch(message: CampaignBatchMessage): Promise<
   if (recipients.length === 0) return;
 
   const mktgDomain = await getSecretForMode('MAILGUN_MKTG_DOMAIN', message.hostname);
-  const site = origin();
+  const site = origin(message.hostname);
   const started = Date.now();
   const result = await sendEmail({
     apiKey: await getSecretForMode('MAILGUN_MKTG_API_KEY', message.hostname),

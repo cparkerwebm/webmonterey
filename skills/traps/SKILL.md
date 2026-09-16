@@ -104,6 +104,19 @@ Branch on `Astro.isPrerendered` and fall back to a plain `<img>`. Do **not** swi
 `passthrough` (kills optimization site-wide) or `cloudflare-binding` (a paid product). `webm
 doctor` checks this.
 
+**The same trap sits in the chrome, where no page you wrote shows it.** The package's own
+on-demand routes - `/subscribe/confirm`, `/unsubscribe` - render the registry's `header`,
+`footer`, `panels`, `pageHeader` and `marketingPage`, and whatever those import: a connect
+block in the footer region, say. An `<Image>`, `<Picture>` or `getImage` in any of them emits
+`/_image` on those routes and renders broken in production, while every page the site wrote is
+prerendered and looks fine, and so does `astro dev`. Same fix, in the component:
+
+```astro
+{Astro.isPrerendered ? <Image src={image} alt={alt} /> : <img src={image.src} alt={alt} />}
+```
+
+`webm doctor` walks the chrome exports and their imports and names the file.
+
 ---
 
 ## Hostnames, deploys and platform

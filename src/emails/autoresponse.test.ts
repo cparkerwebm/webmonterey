@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { renderHtml, renderText } from './autoresponse.ts';
 import { renderHtml as renderNotificationHtml } from './submission-notification.ts';
+import { DEFAULT_COPY } from '../includes/webmonterey/copy-defaults.ts';
 
 const input = {
   body: 'Thanks for getting in touch.',
@@ -79,4 +80,23 @@ test('it reuses the shared footer', () => {
 test('both parts are produced for deliverability', () => {
   assert.ok(renderText(input).length > 0);
   assert.ok(renderHtml(input).startsWith('<!doctype html>'));
+});
+
+test('the client is named above the card, so the visitor can place the message', () => {
+  const html = renderHtml(input);
+  const name = html.indexOf('Acme Co');
+  const card = html.indexOf('background-color:#ffffff');
+  assert.ok(name !== -1 && card !== -1 && name < card);
+  assert.ok(html.includes('background-color:#f0eeed'));
+});
+
+test('the echo heading is the copy default, not a template literal that never interpolated', () => {
+  /*
+   * Found on a rendered test send: the heading was written as a single-quoted string holding
+   * `${...}`, so every autoresponse shipped the placeholder text verbatim above the fields.
+   */
+  for (const out of [renderText(input), renderHtml(input)]) {
+    assert.ok(!out.includes('${'), 'a literal ${ reached the output');
+    assert.ok(out.includes(DEFAULT_COPY.email.autoresponseHeading));
+  }
 });

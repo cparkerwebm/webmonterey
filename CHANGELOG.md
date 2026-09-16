@@ -11,6 +11,98 @@ build. See `/webm:upgrade`.
 
 ---
 
+## 1.8.0 — 2026-09-15
+
+### Added
+
+- **The package owns the toolchain floor, and `npx webm upgrade` raises every site to it.** Until
+  now the only place the package said which wrangler a site should have was the scaffold, read
+  once, on the day the site was made - so every site kept its own wrangler forever and a
+  dependency advisory had to be fixed one repo at a time. The case that forced this: a site
+  upgraded 1.5.0 → 1.6.2 still ran wrangler 4.129.0, whose miniflare bundles sharp 0.35.2 and its
+  libheif heap overflow (GHSA-rgj7-g3m4-5g8c, high); the fix was three wrangler releases away and
+  every range in the chain already accepted it. Now one constant, `WRANGLER_FLOOR` in
+  `cli/toolchain.ts`, is the minimum wrangler a release was tested with - **4.131.1** in this one.
+  The scaffold writes it into a new site, and **`webm upgrade` gains a toolchain step**, in the
+  second half after the codemods: a site whose wrangler is below the floor gets one
+  `npm install wrangler@<version>` - the exact version the site's `@cloudflare/vite-plugin` pins
+  when that is above the floor, else the floor, so the site ends with one copy rather than two -
+  and the step prints what moved, in the queue step's style. A site at or above the floor prints
+  `toolchain: wrangler <x>, at the floor` and nothing changes; a site above it is never brought
+  down; nothing but wrangler is touched. Not `npm audit fix`: that bumps whatever npm decides that
+  day, differs from site to site, and is not something a release can test. **`webm doctor` gains
+  `toolchain-floor`**, which reads the installed wrangler - the manifest in node_modules, not the
+  range - and warns when it is below the floor, naming both versions and the upgrade that raises
+  it; that is how a site that has not upgraded finds out. The end-to-end test puts a site on
+  wrangler 4.129.0 under a `^4.118.0` range, upgrades it, and asserts one copy at or above the
+  floor, no sharp advisory in `npm audit`, and a passing build. Astro is untouched: it stays a peer
+  of the site. And in this direction compatibility_date is safe: the trap is a date newer than the
+  bundled runtime, never older.
+
+### Changed
+
+- **`webm doctor`'s `/_image` check now walks the site's chrome, not only its own on-demand
+  routes.** The package's own on-demand routes - `/subscribe/confirm`, `/unsubscribe` - render the
+  registry's `header`, `footer`, `panels`, `pageHeader` and `marketingPage`, and whatever those
+  import; an `<Image>`, `<Picture>` or `getImage` in any of them emits `/_image` on those routes
+  and renders broken in production, while every page the site wrote is prerendered and `astro dev`
+  looks fine. The check now starts from the registry's chrome exports, follows the site's own
+  imports, and fails naming the file and the export it was reached from; a chrome file that maps
+  the registry's `blocks` counts every block as reachable. `<Picture>` joins `<Image>` and
+  `getImage` on the site's own routes too. The fix is unchanged and now in `/webm:traps` under the
+  `/_image` entry: the `Astro.isPrerendered` branch with a plain `<img src={image.src}>`.
+- **Every transactional email names the client above the white card, and the page is built to
+  render the same in Gmail, Outlook and Apple Mail.** The three templates - the form
+  notification, the autoresponse and the subscription confirmation - open with the `client` from
+  `webmonterey.json` as the message's one heading, centred above the card, so a person can place
+  the message before reading it; until now the first thing that said who it was from was the
+  copyright in the footer. The page - tint, name, card, footer - is one shared `renderPageHtml`
+  in `emails/layout.ts`, exported from `@cparkerwebm/webmonterey/emails` for a site's own mail;
+  a template supplies the card. HTML only: the plain-text part already opens with the copy and the
+  footer names the client. The page tint is `#f0eeed`, one step lighter than before.
+
+  The layout is rebuilt because a real send showed the old one did not survive Gmail: the tint sat
+  on `<body>`, which Gmail discards, and the white card and the confirm button carried their
+  colour as a `background` shorthand on a div and a link, which Gmail dropped - so a Gmail
+  reader got black text on white, no card, and a button that was white text on white. Every
+  colour now rides on a table cell as `bgcolor` plus `background-color` in six-digit hex, which
+  is what Gmail is proven to paint; the card is a full-width table inside a max-width div, because
+  Apple Mail ignores `max-width` on a table and Outlook for Windows ignores it on a div, with a
+  conditional-comment table for Outlook; the button's padding is on the cell, because Outlook
+  ignores padding on a link; the document declares `lang`, a charset and a title. Checked
+  construct by construct against Can I Email and by sending into Gmail. Nothing to do on
+  `npm update`.
+
+### Fixed
+
+- **A signup on a preview deployment gets a confirmation link back to the preview, not to the
+  client's live domain.** The marketing links - the confirmation a new subscriber must click, and
+  the per-recipient unsubscribe in a campaign - were built on `https://<domain>/` unconditionally,
+  so a signup on a workers.dev preview before launch pointed at the old site and 404ed, and a test
+  campaign's unsubscribe did the same. Both now build on the hostname the message carries when
+  the deployment is a staging one - environment `staging`, or any workers.dev host, the same rule
+  that already redirects a preview's recipients and selects its `_TEST` secrets - and on the
+  domain otherwise. A cron passes no hostname and falls back to the domain. Always https. The
+  choice is `mailOrigin` in `marketing/links.ts`, pure, with a test for a staging host, a
+  production host and null.
+- **The autoresponse heading above the echoed fields was the placeholder, not the words.** Since
+  1.0.0 every autoresponse has carried the literal text `${DEFAULT_COPY.email.autoresponseHeading}`
+  where "What you sent us" belonged, in both the HTML and plain-text parts: the constant was a
+  single-quoted string holding a template expression, which nothing ever interpolated. Found on
+  a rendered test send, not by a test, so a test now asserts no `${` reaches either part. A
+  site takes the fix with `npm update`.
+
+### For every site
+
+1. `npx webm upgrade`. The toolchain step raises wrangler to the floor and says so; nothing else
+   on the site changes. A site coming FROM a version before 1.8.0 is still driven by that older
+   binary's first half, but the second half runs from the binary just installed, so the step
+   applies on this very upgrade - no `--codemods-from` needed.
+2. `npx webm doctor` shows `toolchain-floor` ok, and `npm run preview` boots workerd and serves
+   the home page.
+
+---
+
 ## 1.7.0 — 2026-09-15
 
 A release about where a secret lives. Nothing changes for a site on `npm update`: every secret it

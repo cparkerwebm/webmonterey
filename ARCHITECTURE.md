@@ -501,6 +501,12 @@ for a site mid-build; failures are for things that are wrong on a launched site.
 - **A major must ask something of a site**, and it ships a codemod. A major that asks for nothing
   is a minor, however much the API shrank; the release script refuses otherwise.
 - **Codemods are idempotent.** A half-finished upgrade gets re-run.
+- **The package owns the toolchain floor.** One constant names the minimum wrangler a release was
+  tested with; the scaffold writes it into a new site and `webm upgrade` raises an old site to it,
+  installing the exact version the adapter's Cloudflare plugin pins so the site ends with one copy.
+  A fleet-wide advisory in miniflare or workerd is fixed by raising the floor once and letting sites
+  upgrade, not one lockfile at a time - and never by `npm audit fix`, which differs from site to
+  site and cannot be tested once. `webm doctor` warns a site that is below it. Astro stays a peer.
 - **A site can pin.** Sitting on an old major is legitimate.
 - **Every trap that caused an incident becomes a test** in `examples/minimal`, against built
   output, on every PR — because the layer-order bug was invisible in source and in `astro dev`.
@@ -560,3 +566,4 @@ a page.
 | 30 | The marketing list is the site's own second D1 database; Mailgun only sends, through a domain sending key | 8 |
 | 31 | Confirmed opt-in always, provenance on every row, and a provider suppression is never undone by a form | 8 |
 | 32 | A secret is read with `getSecret` whether it is a Worker secret or a Secrets Store binding; the site chooses per secret in `wrangler.jsonc` | 8 |
+| 33 | The package owns the wrangler floor; `webm upgrade` raises a site to it and nothing else moves; never `npm audit fix` | 12 |

@@ -220,7 +220,7 @@ const DEAD_LETTER_NAME: Codemod = {
 export const CODEMODS: Codemod[] = [WEBMASTER_CTA, DEAD_LETTER_NAME];
 
 /** Semver compare, on the three numeric parts only. Prerelease tags are not used here. */
-function compareVersions(a: string, b: string): number {
+export function compareVersions(a: string, b: string): number {
   const pa = a.split('.').map(Number);
   const pb = b.split('.').map(Number);
   for (let i = 0; i < 3; i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) - (pb[i] ?? 0);

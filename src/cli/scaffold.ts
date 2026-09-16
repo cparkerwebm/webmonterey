@@ -11,6 +11,7 @@
 import { resourceNames } from './slug.ts';
 import { MCP_NAMES, mcpConfig } from './mcp.ts';
 import { projectSettings } from './settings.ts';
+import { wranglerRange } from './toolchain.ts';
 
 export interface ScaffoldOptions {
   domain: string;
@@ -116,7 +117,8 @@ export function scaffold(options: ScaffoldOptions): Record<string, string> {
           prettier: '^3.9.6',
           'prettier-plugin-astro': '^0.14.1',
           typescript: '^6.0.3',
-          wrangler: '^4.118.0',
+          /* The toolchain floor, owned by the package; `webm upgrade` raises an old site to it. */
+          wrangler: wranglerRange(),
         },
       },
       null,

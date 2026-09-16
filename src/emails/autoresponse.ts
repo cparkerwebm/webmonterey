@@ -18,7 +18,8 @@
  * The echo of their own submission is deliberate: it is the only record they have, since the
  * form cleared when it submitted.
  */
-import { escapeHtml, renderFooterHtml, renderFooterText } from './footer.ts';
+import { escapeHtml, renderFooterText } from './footer.ts';
+import { renderPageHtml } from './layout.ts';
 import { DEFAULT_COPY } from '../includes/webmonterey/copy-defaults.ts';
 
 export interface AutoresponseEmailInput {
@@ -33,7 +34,7 @@ export interface AutoresponseEmailInput {
 }
 
 /** The heading above the echoed fields, in both parts. */
-const ECHO_HEADING = '${DEFAULT_COPY.email.autoresponseHeading}';
+const ECHO_HEADING = DEFAULT_COPY.email.autoresponseHeading;
 
 export function renderText(input: AutoresponseEmailInput): string {
   const lines = [
@@ -54,7 +55,7 @@ export function renderHtml(input: AutoresponseEmailInput): string {
     .map(
       (f) => `      <tr>
         <th align="left" style="padding:8px 16px 8px 0;vertical-align:top;color:#3f3f3f;font-weight:600;white-space:nowrap;">${escapeHtml(f.label)}</th>
-        <td style="padding:8px 0;vertical-align:top;color:#222;">${escapeHtml(f.value) || '&mdash;'}</td>
+        <td style="padding:8px 0;vertical-align:top;color:#222222;">${escapeHtml(f.value) || '&mdash;'}</td>
       </tr>`,
     )
     .join('\n');
@@ -67,17 +68,13 @@ export function renderHtml(input: AutoresponseEmailInput): string {
    * than from a visitor, but it is still authored text arriving through JSON, and there is no
    * case where raw HTML in it would be intended.
    */
-  return `<!doctype html>
-<html>
-  <body style="margin:0;padding:24px;background:#f1eae8;font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-    <div style="max-width:640px;margin:0 auto;padding:32px;background:#fff;border-radius:8px;">
-      <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#222;">${escapeHtml(input.body)}</p>
+  return renderPageHtml({
+    client: input.client,
+    domain: input.domain,
+    card: `      <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#222222;">${escapeHtml(input.body)}</p>
       <p style="margin:0 0 8px;font-size:13px;font-weight:600;color:#3f3f3f;">${ECHO_HEADING}</p>
       <table style="width:100%;border-collapse:collapse;font-size:14px;">
 ${rows}
-      </table>
-    </div>
-${renderFooterHtml({ client: input.client, domain: input.domain })}
-  </body>
-</html>`;
+      </table>`,
+  });
 }

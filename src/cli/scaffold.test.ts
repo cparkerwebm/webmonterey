@@ -302,3 +302,8 @@ test('marketing is documented in the scaffold and off: the secrets named, the da
   assert.doesNotMatch(f['wrangler.jsonc']!, /^\s*"binding": "DB_MKTG"/m);
   assert.equal(json(f, 'webmonterey.json').features.marketing, false);
 });
+
+test("a new site's wrangler is the package's toolchain floor, not a number written here", async () => {
+  const { wranglerRange } = await import('./toolchain.ts');
+  assert.equal(json(files(), 'package.json').devDependencies.wrangler, wranglerRange());
+});
